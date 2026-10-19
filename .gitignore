@@ -1,0 +1,27 @@
+# ── 构建产物 ──
+SimpleMFPScan.exe
+# 图标资源对象：由 justfile 的 icon 配方从 app.rc + app.ico 现编（windres），可重建
+rsrc_windows_amd64.syso
+# Rust OCR 桥构建产物：由 justfile 的 ocr 配方编出，可重建
+ocrbridge/target/
+# 免安装 zip 及其暂存目录：由 justfile 的 package 配方生成
+dist/
+
+# ── 运行期产物 ──
+*.log
+
+# ── 编辑器 / 系统 ──
+.idea/
+.vscode/
+*.rs.bk
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ── 调研/临时草稿 ──
+.tmp_*
+
+# ── 刻意保留，勿加进来 ──
+# models/  OCR 模型三件套（~6.4MB），编进 exe，是 OCR 功能的唯一来源。
+# ocrbridge/  Rust OCR 静态库源码。
+# app.ico、app.rc  exe 图标 / 版本资源。

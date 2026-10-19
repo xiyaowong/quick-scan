@@ -1,0 +1,20 @@
+[package]
+name = "ocrbridge"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# pin 精确版本：rusto-rs 太新（单作者、API 在 0.3.0 破坏性重写过），升级必须人工过一遍
+rusto-rs = "=0.3.1"
+
+[profile.release]
+panic = "abort" # extern "C" 边界上 panic 只能 abort，不能 unwind 穿过 FFI
+opt-level = 3
+lto = "fat"
+# 瘦身（2026-10-16）：staticlib 默认带着全套 debuginfo，占静态库 13.7MB 的大半。
+# strip 剥符号；单 codegen 单元让 fat LTO 的跨 crate 内联拉满。
+strip = true
+codegen-units = 1

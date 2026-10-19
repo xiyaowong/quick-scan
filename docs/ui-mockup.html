@@ -1,0 +1,776 @@
+<title>SimpleMFPScan 界面稿</title>
+<meta charset="utf-8">
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* ── 设计计划 ───────────────────────────────────────────
+   布局：仿 Windows 11 桌面应用窗口居中于桌面底色之上；窗口内
+   左页面网格 / 右参数栏 / 底部状态栏（打印机选择常驻左下）。
+   配色：冷灰纸感中性色 + 深青 accent（扫描仪光条的青绿），红章
+   作为文档世界的点睛。字体：IBM Plex Sans（界面）+ Plex Mono（数据读数）。
+────────────────────────────────────────────────────── */
+:root{
+  --desk:#d7dde2;
+  --win:#f4f6f7;
+  --panel:#ffffff;
+  --panel-2:#eef1f3;
+  --ink:#17242e;
+  --mut:#5d6b76;
+  --line:#d3dade;
+  --line-2:#e4e9ec;
+  --accent:#0c7f8a;
+  --accent-hi:#0a6a73;
+  --accent-ink:#ffffff;
+  --accent-soft:#e0f0f1;
+  --danger:#b23a2e;
+  --danger-soft:#f7e8e6;
+  --paper:#ffffff;
+  --ok:#2f9e4f;
+  --warn:#d99a1e;
+  --off:#c74435;
+  --shadow:rgba(23,36,46,.16);
+  color-scheme:light;
+}
+/* 单一白色主题：不跟随系统深色，桌面应用的观感在所有机器上一致 */
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{
+  margin:0;background:var(--desk);color:var(--ink);
+  font-family:"IBM Plex Sans","Microsoft YaHei UI",sans-serif;font-size:14px;line-height:1.5;
+  padding-block:24px 32px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+}
+.mono{font-family:"IBM Plex Mono",Consolas,monospace;font-variant-numeric:tabular-nums}
+
+/* ── 桌面舞台 ── */
+.stage{max-width:1120px;margin:0 auto}
+
+/* ── 应用窗口 ── */
+.window{
+  background:var(--win);border:1px solid var(--line);border-radius:10px;
+  box-shadow:0 24px 60px var(--shadow);overflow:hidden;
+  display:flex;flex-direction:column;min-height:680px;
+}
+.titlebar{
+  display:flex;align-items:center;justify-content:space-between;
+  height:42px;padding:0 6px 0 16px;background:var(--panel);
+  border-bottom:1px solid var(--line-2);
+}
+.titlebar .brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:13.5px;letter-spacing:.01em}
+.brand .appicon{width:17px;height:17px;color:var(--accent);flex-shrink:0}
+.brand small{color:var(--mut);font-weight:400}
+.caption{display:flex}
+.caption span{width:44px;height:34px;display:grid;place-items:center;border-radius:6px;color:var(--mut);font-size:12px}
+.caption span:hover{background:var(--panel-2)}
+.caption .close:hover{background:var(--danger);color:#fff}
+
+.body-row{display:flex;flex:1;min-height:0}
+
+/* ── 左：页面管理区 ── */
+.pages{flex:1;min-width:0;display:flex;flex-direction:column;padding:16px 16px 12px}
+.pages-head{display:flex;align-items:baseline;gap:14px;margin:0 2px 12px}
+.pages-head h2{margin:0;font-size:13px;font-weight:600;letter-spacing:.08em;color:var(--mut)}
+.pages-head .tip{font-size:12px;color:var(--mut)}
+.pages-head .n{margin-left:auto;font-size:12.5px;color:var(--mut)}
+.pages-head .n b{color:var(--ink);font-weight:600}
+.grid{
+  flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));
+  gap:12px;align-content:start;overflow-y:auto;padding:2px;
+}
+.thumb{
+  position:relative;border:1px solid var(--line);border-radius:6px;background:var(--paper);
+  cursor:grab;
+}
+.thumb:hover{border-color:var(--accent);box-shadow:0 4px 14px var(--shadow)}
+.thumb .zoom{
+  position:absolute;left:0;right:0;top:0;bottom:26px;display:grid;place-items:center;
+  color:#fff;font-size:12.5px;background:rgba(14,34,40,.42);border-radius:5px 5px 0 0;
+  opacity:0;transition:opacity .15s;pointer-events:none;text-align:center;padding:0 8px;
+}
+.thumb:hover .zoom{opacity:1}
+.thumb.dragging{opacity:.32;border-style:dashed;border-color:var(--accent);cursor:grabbing}
+.thumb .frame{
+  aspect-ratio:210/297;display:grid;place-items:center;overflow:hidden;
+  background:var(--paper);border-radius:5px 5px 0 0;
+}
+.thumb img{display:block;max-width:100%;max-height:100%}
+.thumb .pn{
+  position:absolute;left:6px;top:6px;background:var(--ink);color:var(--win);
+  font-size:10.5px;padding:0 6px;border-radius:3px;opacity:.85;
+}
+.thumb .grip{
+  position:absolute;right:6px;top:5px;font-size:12px;line-height:1.2;color:var(--mut);
+  background:var(--paper);border-radius:3px;padding:0 3px;opacity:0;transition:opacity .15s;
+}
+.thumb:hover .grip{opacity:.85}
+.thumb .acts{display:flex;border-top:1px solid var(--line-2)}
+.thumb .acts button{
+  flex:1;border:0;background:transparent;color:var(--mut);font-size:12px;
+  padding:5px 0;cursor:pointer;font-family:inherit;
+}
+.thumb .acts button:hover{background:var(--panel-2);color:var(--ink)}
+.thumb .acts .del:hover{background:var(--danger-soft);color:var(--danger)}
+.thumb.pop{animation:pop .28s ease}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.thumb.pop{animation:none}}
+.empty{
+  flex:1;display:grid;place-items:center;border:1.5px dashed var(--line);
+  border-radius:8px;color:var(--mut);text-align:center;padding:32px;
+}
+.empty .big{font-size:15px;color:var(--ink);margin-bottom:6px;font-weight:500}
+.empty p{margin:0;font-size:13px;max-width:34em}
+
+/* ── 右：操作区 ── */
+.rail{
+  width:268px;flex-shrink:0;background:var(--panel);
+  border-left:1px solid var(--line-2);padding:18px 18px 14px;
+  display:flex;flex-direction:column;gap:15px;overflow-y:auto;
+}
+.grp label,.grp .lab{
+  display:block;font-size:11px;letter-spacing:.1em;color:var(--mut);
+  margin-bottom:7px;font-weight:600;
+}
+.seg{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{
+  flex:1;border:0;background:var(--panel);color:var(--mut);padding:7px 2px;
+  font-size:12.5px;cursor:pointer;font-family:inherit;border-left:1px solid var(--line-2);
+}
+.seg button:first-child{border-left:0}
+.seg button:hover{background:var(--panel-2)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);font-weight:500}
+.seg button:disabled{color:var(--mut);opacity:.5;background:var(--panel);cursor:not-allowed}
+.seg button[aria-pressed="true"]:disabled{background:var(--line);color:var(--mut);font-weight:500;opacity:1}
+.seg[aria-disabled="true"]{border-style:dashed;background:var(--panel-2)}
+.grp .lab.fixed::after{content:" · 固定";color:var(--mut);font-weight:400;letter-spacing:0}
+.seg button:focus-visible{outline:2px solid var(--accent-hi);outline-offset:-2px}
+select{
+  width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;
+  background:var(--panel);color:var(--ink);font-size:13px;font-family:inherit;cursor:pointer;
+}
+select:focus-visible{outline:2px solid var(--accent-hi);outline-offset:1px}
+.srchint{font-size:11.5px;color:var(--mut);margin:7px 0 0}
+.scanbtn{
+  border:0;border-radius:7px;background:var(--accent);color:var(--accent-ink);
+  font-size:15px;font-weight:600;padding:13px;cursor:pointer;width:100%;
+  font-family:inherit;letter-spacing:.04em;
+}
+.scanbtn:hover:not(:disabled){background:var(--accent-hi)}
+.scanbtn:disabled{opacity:.65;cursor:default}
+.scanbtn:focus-visible{outline:2px solid var(--accent-hi);outline-offset:2px}
+/* 清空页面：扫描键下方的次要操作，危险动作（有二次确认） */
+.clearbtn{
+  border:0;border-radius:5px;background:transparent;color:var(--mut);
+  font-size:12px;padding:5px;cursor:pointer;width:100%;font-family:inherit;
+}
+.clearbtn:hover:not(:disabled){background:var(--accent-soft);color:var(--ink)}
+.clearbtn:disabled{opacity:.4;cursor:default}
+.progress{height:4px;border-radius:2px;background:var(--line-2);overflow:hidden}
+.progress i{display:block;height:100%;background:var(--accent);width:0%;transition:width .18s linear}
+.scanstatus{font-size:12px;color:var(--mut);min-height:1.2em;margin:-6px 0 0}
+.hr{border:0;border-top:1px solid var(--line-2);margin:2px 0}
+.expbtn{
+  border:1.5px solid var(--accent);border-radius:7px;background:transparent;color:var(--accent);
+  font-size:14.5px;font-weight:600;padding:11px;cursor:pointer;width:100%;
+  font-family:inherit;letter-spacing:.06em;
+}
+.expbtn:hover:not(:disabled){background:var(--accent-soft)}
+.expbtn:disabled{opacity:.4;cursor:not-allowed}
+.rail .hint{font-size:11.5px;color:var(--mut);margin:-6px 0 0}
+
+/* ── 底部状态栏：打印机在左下 ── */
+.statusbar{
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:10px 16px;background:var(--panel);border-top:1px solid var(--line-2);
+}
+.printer{display:flex;align-items:center;gap:10px;min-width:0;flex:1;max-width:620px}
+.led{
+  width:11px;height:11px;border-radius:50%;flex-shrink:0;background:var(--ok);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 20%,transparent);
+}
+.led[data-state="warn"]{background:var(--warn);box-shadow:0 0 0 3px color-mix(in srgb,var(--warn) 22%,transparent)}
+.led[data-state="off"]{
+  background:var(--off);box-shadow:0 0 0 3px color-mix(in srgb,var(--off) 20%,transparent);
+  animation:pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse{50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.led[data-state="off"]{animation:none}}
+.printer .led~select, .printer select{
+  flex:1;min-width:0;width:auto;font-size:12.5px;padding:6px 10px;
+  text-overflow:ellipsis;white-space:nowrap;
+}
+.printer .state{font-size:12px;color:var(--mut);white-space:nowrap;flex-shrink:0}
+.printer .refresh:hover{background:var(--panel-2);color:var(--ink)}
+
+.legend{display:none}
+
+/* ── 灯箱 & 对话框 ── */
+.overlay{position:fixed;inset:0;background:rgba(10,18,24,.62);display:grid;place-items:center;padding:24px;z-index:20}
+.overlay[hidden]{display:none}
+.lightbox img{
+  display:block;max-width:min(680px,86vw);max-height:78vh;border-radius:4px;
+  box-shadow:0 20px 60px rgba(0,0,0,.4);background:var(--paper);
+}
+.lightbox .bar{display:flex;align-items:center;gap:12px;color:#dfe8ec;font-size:13px;margin-bottom:10px;flex-wrap:wrap}
+.lightbox .bar button{
+  border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.08);color:#fff;
+  border-radius:5px;padding:4px 13px;cursor:pointer;font-size:13px;font-family:inherit;
+}
+.lightbox .bar button:hover{background:rgba(255,255,255,.18)}
+.lightbox .bar button:disabled{opacity:.35;cursor:default}
+.lightbox .bar .sp{margin-left:auto}
+.dialog{
+  width:min(440px,92vw);background:var(--win);border:1px solid var(--line);
+  border-radius:10px;box-shadow:0 24px 70px rgba(0,0,0,.45);overflow:hidden;
+}
+.dialog header{padding:15px 20px 0;font-weight:600;font-size:15px}
+.dialog .dbody{padding:14px 20px 4px;display:flex;flex-direction:column;gap:15px}
+.dialog .drow .lab{display:block;font-size:11px;letter-spacing:.1em;color:var(--mut);font-weight:600;margin-bottom:6px}
+.dialog input[type=text]{
+  width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;
+  background:var(--panel);color:var(--ink);font-size:13.5px;font-family:inherit;
+}
+.dialog input[type=text]:focus-visible{outline:2px solid var(--accent-hi);outline-offset:1px}
+.locrow{display:flex;gap:8px;align-items:center}
+.locrow .path{
+  flex:1;font-size:12.5px;color:var(--mut);background:var(--panel-2);
+  border:1px solid var(--line-2);border-radius:6px;padding:7px 10px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.locrow button{
+  border:1px solid var(--line);background:var(--panel);border-radius:6px;color:var(--ink);
+  padding:7px 13px;font-size:12.5px;cursor:pointer;font-family:inherit;flex-shrink:0;
+}
+.locrow button:hover{background:var(--panel-2)}
+.dfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px 18px}
+.dfoot button{border-radius:6px;padding:9px 20px;font-size:13.5px;cursor:pointer;font-family:inherit;font-weight:500}
+.dfoot .ghost{border:1px solid var(--line);background:transparent;color:var(--ink)}
+.dfoot .ghost:hover{background:var(--panel-2)}
+.dfoot .primary{border:0;background:var(--accent);color:var(--accent-ink)}
+.dfoot .primary:hover:not(:disabled){background:var(--accent-hi)}
+.dfoot .primary:disabled{opacity:.6;cursor:default}
+.done{display:flex;gap:11px;align-items:flex-start;background:var(--accent-soft);border-radius:7px;padding:12px 14px}
+.done .ic{color:var(--accent);flex-shrink:0;margin-top:1px}
+.done b{display:block;font-size:13.5px}
+.done span{font-size:12.5px;color:var(--mut)}
+.done .openlnk{border:0;background:transparent;color:var(--accent);cursor:pointer;padding:0;font-size:12.5px;text-decoration:underline;font-family:inherit}
+
+/* ── 窄屏 ── */
+@media (max-width:880px){
+  .body-row{flex-direction:column}
+  .rail{width:auto;border-left:0;border-top:1px solid var(--line-2)}
+  .grid{min-height:260px}
+  .window{min-height:0}
+  .printer{min-width:0;width:100%}
+}
+</style>
+
+<div class="stage">
+  <div class="window">
+    <div class="titlebar">
+      <div class="brand">
+        <svg class="appicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M7 9.5V3.5h10v6"/>
+          <rect x="3.5" y="9.5" width="17" height="7.5" rx="2"/>
+          <path d="M7 14.5h10v6H7z"/>
+        </svg>
+        惠普MFP打印机扫描工具
+      </div>
+      <div class="caption"><span>─</span><span>▢</span><span class="close">✕</span></div>
+    </div>
+
+    <div class="body-row">
+      <!-- 左：页面管理区 -->
+      <main class="pages">
+        <div class="pages-head">
+          <h2>扫描页面</h2>
+          <span class="n" id="pagecount">共 <b>0</b> 页</span>
+        </div>
+        <div class="grid" id="grid"></div>
+        <div class="empty" id="empty">
+          <div>
+            <div class="big">还没有页面</div>
+            <p>把文件放好，点右侧「扫描」。每次扫描的结果都会追加在这里。</p>
+            <p>双击页面可放大查看。</p>
+          </div>
+        </div>
+      </main>
+
+      <!-- 右：操作区 -->
+      <aside class="rail">
+        <div class="grp" id="grp-size"><label for="g-size">纸张大小</label>
+          <select id="g-size">
+            <option selected>A4（210 × 297 mm）</option>
+            <option>A5（148 × 210 mm）</option>
+            <option>Letter（216 × 279 mm）</option>
+          </select>
+        </div>
+        <div class="grp" id="grp-dpi"><label for="g-dpi">清晰度</label>
+          <select id="g-dpi">
+            <option selected>300 dpi（推荐）</option>
+            <option>200 dpi</option>
+            <option>100 dpi</option>
+          </select>
+          <p class="srchint" id="dpihint">数字越大越清晰，扫描也越慢。</p>
+        </div>
+
+        <div class="grp" id="grp-intent"><label for="g-intent">用途</label>
+          <select id="g-intent">
+            <option selected>文档（推荐）</option>
+            <option>图文混排</option>
+            <option>照片</option>
+            <option>快速预览</option>
+          </select>
+          <p class="srchint">按内容选，拿不准就用「文档」：图文混排选「图文混排」，照片选「照片」，只想快速看效果选「快速预览」。</p>
+        </div>
+
+        <div class="grp" id="grp-color"><span class="lab">色彩</span>
+          <div class="seg" id="g-color">
+            <button data-val="color" aria-pressed="true">彩色</button>
+            <button data-val="gray" aria-pressed="false">灰度</button>
+            <button data-val="bw" aria-pressed="false">黑白</button>
+          </div>
+        </div>
+        <div class="grp" id="grp-src"><span class="lab">放纸方式</span>
+          <div class="seg" id="g-src">
+            <button data-val="flatbed" aria-pressed="true">玻璃板</button>
+            <button data-val="adf" aria-pressed="false">进纸口</button>
+          </div>
+          <p class="srchint" id="srchint"></p>
+        </div>
+
+        <button class="scanbtn" id="scanbtn">扫　描</button>
+        <button class="clearbtn" id="clearbtn" disabled>清空页面</button>
+        <div class="progress" id="prog" hidden><i id="progbar"></i></div>
+        <div class="scanstatus" id="scanstatus"></div>
+
+        <hr class="hr">
+        <button class="expbtn" id="expbtn" disabled>导　出</button>
+        <p class="hint" id="exphint">先扫描至少一页</p>
+      </aside>
+    </div>
+
+    <!-- 底部状态栏 -->
+    <footer class="statusbar">
+      <div class="printer">
+        <span class="led" id="led" data-state="ok" title="设备在线"></span>
+        <select id="printer" aria-label="选择打印机">
+          <option value="0" selected>HP Laser MFP 131 133 135-138 - 192.168.31.225</option>
+          <option value="1">HP LaserJet MFP M437n - 192.168.31.240</option>
+          <option value="2">HP LaserJet Pro MFP M126nw - 192.168.31.181</option>
+          <option value="3">HP LaserJet Pro MFP M227sdn - 192.168.31.106</option>
+          <option value="4">HP LaserJet MFP M437nda - 192.168.31.77</option>
+        </select>
+        <span class="state" id="pstate">在线</span>
+        <button class="refresh" id="refresh" title="重新检测设备">⟳</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<!-- 灯箱 -->
+<div class="overlay lightbox" id="lightbox" hidden>
+  <div>
+    <div class="bar">
+      <button id="lb-prev">‹ 上一页</button>
+      <span class="mono" id="lb-cap"></span>
+      <button id="lb-next">下一页 ›</button>
+      <span class="sp"></span>
+      <button id="lb-rot" title="旋转 90°">↻ 旋转</button>
+      <button id="lb-close">关闭</button>
+    </div>
+    <img id="lb-img" alt="页面预览">
+  </div>
+</div>
+
+<!-- 导出对话框 -->
+<div class="overlay" id="expdlg" hidden>
+  <div class="dialog" role="dialog" aria-label="导出">
+    <header>导出</header>
+    <div class="dbody">
+      <div class="drow"><span class="lab">格式</span>
+        <div class="seg" id="g-fmt">
+          <button aria-pressed="true">PDF（合并成一个文件）</button>
+          <button aria-pressed="false">图片（每页一张 JPG）</button>
+        </div>
+      </div>
+      <div class="drow"><label for="fname">文件名</label>
+        <input type="text" id="fname" spellcheck="false">
+      </div>
+      <!-- 保存位置不在此处选：点"导出"后弹系统另存为，起始目录 = 上次用过的目录
+           （首次为 文档 \ 扫描件）。导出不清空页面。 -->
+      <div class="done" id="expdone" hidden>
+        <svg class="ic" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="7"/><path d="M4.8 8.2l2.2 2.2 4.2-4.6"/></svg>
+        <div><b>已导出 <span id="expdone-n"></span></b><span><button class="openlnk" type="button">打开所在文件夹</button></span></div>
+      </div>
+    </div>
+    <div class="dfoot">
+      <button class="ghost" id="exp-cancel">取消</button>
+      <button class="primary" id="exp-go">导出</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $=function(id){return document.getElementById(id)};
+  var pages=[];            // {id,url,rot}
+  var mode="color", dpi=300, src="flatbed", fmt="pdf";
+  var scanning=false, lbIndex=-1, seq=0, popIds=[], dragging=null, dragBlocked=false;
+
+  /* ── 分段按钮 ── */
+  function wireSeg(id,fn){
+    var seg=$(id);
+    seg.addEventListener("click",function(e){
+      var b=e.target.closest("button");if(!b)return;
+      [].forEach.call(seg.querySelectorAll("button"),function(x){x.setAttribute("aria-pressed","false")});
+      b.setAttribute("aria-pressed","true");
+      fn(Array.prototype.indexOf.call(seg.querySelectorAll("button"),b));
+    });
+  }
+  wireSeg("g-color",function(i){mode=["color","gray","bw"][i]});
+  document.getElementById("g-dpi").addEventListener("change",function(){dpi=parseInt(this.value,10)});
+  wireSeg("g-src",function(i){src=["flatbed","adf"][i];updateSrcHint()});
+  wireSeg("g-fmt",function(i){fmt=["pdf","jpg"][i]});
+  /* ── 设备：能力优先问 WIA 驱动，查不到才用下面的表兜底 ──
+     表内数据均按厂商规格核对，只收 MFP 系列 */
+  var DEVICES=[
+    {name:"HP Laser MFP 131 133 135-138 - 192.168.31.225",state:"ok",
+     colors:["color","gray","bw"],srcs:["flatbed"],size:"A4",
+     srcNote:"掀开盖子，把纸平放在玻璃板上，一次一张"},
+    {name:"HP LaserJet MFP M437n - 192.168.31.240",state:"ok",
+     colors:["color","gray","bw"],srcs:["flatbed"],size:"A4",
+     srcNote:"掀开盖子，把纸平放在玻璃板上，一次一张"},
+    {name:"HP LaserJet Pro MFP M126nw - 192.168.31.181",state:"ok",
+     colors:["color","gray","bw"],srcs:["flatbed"],size:"A4",
+     srcNote:"掀开盖子，把纸平放在玻璃板上，一次一张"},
+    {name:"HP LaserJet Pro MFP M227sdn - 192.168.31.106",state:"off",
+     colors:["color","gray","bw"],srcs:["flatbed","adf"],size:"A4",
+     srcNote:"整叠纸正面朝上放进进纸口，自动一张张扫（最多 35 张）"},
+    {name:"HP LaserJet MFP M437nda - 192.168.31.77",state:"ok",
+     colors:["color","gray","bw"],srcs:["flatbed","adf"],size:"A4",
+     srcNote:"整叠纸正面朝上放进进纸口，自动一张张扫（最多 100 张）"}
+  ];
+  var STATE_TXT={ok:"在线",off:"没连上"};
+  var COLOR_TXT={color:"彩色",gray:"灰度",bw:"黑白"};
+  var SRC_TXT={flatbed:"玻璃板",adf:"进纸口"};
+  var devIndex=0;
+
+  function setSeg(id,val,quiet){
+    var seg=$(id),list=[].slice.call(seg.querySelectorAll("button"));
+    var i=list.map(function(b){return b.textContent.trim()}).indexOf(val);
+    if(i<0)return;
+    list.forEach(function(b,k){b.setAttribute("aria-pressed",k===i?"true":"false")});
+    if(!quiet)seg.dispatchEvent(new CustomEvent("preset",{detail:i}));
+  }
+  /* 没得选就置灰并锁定；选得到就正常可选 */
+  function gateSeg(id,allowed){
+    var seg=$(id),list=[].slice.call(seg.querySelectorAll("button")),live=[];
+    list.forEach(function(b){
+      var ok=allowed.indexOf(b.dataset.val)>=0;
+      b.disabled=!ok;
+      if(ok)live.push(b);
+    });
+    if(live.length===1){
+      live[0].setAttribute("aria-pressed","true");
+      seg.setAttribute("aria-disabled","true");
+      seg.title="这台机器只有这一种，不用选";
+    }else{
+      seg.removeAttribute("aria-disabled");
+      seg.removeAttribute("title");
+    }
+    var label=seg.closest(".grp").querySelector(".lab");
+    if(label)label.classList.toggle("fixed",live.length===1);
+  }
+  function updateSrcHint(){
+    var d=DEVICES[devIndex];
+    $("srchint").textContent = d.srcNote;
+  }
+  function applyDevice(i){
+    devIndex=(i+DEVICES.length)%DEVICES.length;
+    var d=DEVICES[devIndex];
+    $("printer").value=String(devIndex);
+    $("printer").title=d.name;
+    $("led").setAttribute("data-state",d.state);
+    $("led").title="设备"+STATE_TXT[d.state];
+    $("pstate").textContent=STATE_TXT[d.state];
+
+    gateSeg("g-color",d.colors);
+    gateSeg("g-src",d.srcs);
+    if(d.colors.indexOf(mode)<0){mode=d.colors[0];setSeg("g-color",COLOR_TXT[mode]);}
+    if(d.srcs.indexOf(src)<0){src=d.srcs[0];setSeg("g-src",SRC_TXT[src]);}
+    $("g-size").value=[].slice.call($("g-size").options)
+      .filter(function(o){return o.textContent.indexOf(d.size)===0})[0].value;
+
+    updateSrcHint();
+    $("scanbtn").disabled = d.state==="off";
+    $("scanstatus").textContent = d.state==="off" ? "这台设备没连上，换一台或点 ⟳ 重新检测" : "";
+  }
+
+  /* ── 模拟文档绘制：thumb 出低清缩略图，full 出高清整图 ── */
+  function drawDoc(m,res){
+    var LW=640,LH=906;                       // 逻辑画布
+    var full=res==="full";
+    var W=full?1280:240,H=Math.round(W*LH/LW);
+    var c=document.createElement("canvas");c.width=W;c.height=H;
+    var x=c.getContext("2d");
+    x.scale(W/LW,H/LH);
+    var pal = m==="color" ? {paper:"#fff",ink:"#2b3a4a",soft:"#8fa6b5",line:"#a9bcc9",seal:"rgba(192,57,43,.82)"}
+            : m==="gray"  ? {paper:"#f5f5f5",ink:"#3d3d3d",soft:"#8a8a8a",line:"#a5a5a5",seal:"rgba(120,120,120,.7)"}
+            :               {paper:"#fff",ink:"#0d0d0d",soft:"#2a2a2a",line:"#4a4a4a",seal:"rgba(20,20,20,.75)"};
+    x.fillStyle=pal.paper;x.fillRect(0,0,LW,LH);
+    var M=64,yy=M,i,p;
+    x.fillStyle=pal.ink;x.fillRect(M,yy,180+Math.random()*160,20);yy+=46;
+    x.fillStyle=pal.soft;x.fillRect(M,yy,120,8);yy+=34;
+    var paras=3+Math.floor(Math.random()*3);
+    for(p=0;p<paras;p++){
+      var lines=3+Math.floor(Math.random()*4);
+      for(i=0;i<lines;i++){
+        x.fillStyle=i===0?pal.ink:pal.soft;
+        x.fillRect(M,yy,140+Math.random()*(LW-2*M-140),7);
+        yy+=24;
+      }
+      yy+=14;
+    }
+    var tw=LW-2*M,rows=3+Math.floor(Math.random()*3),rh=38,cw=tw/3,ty=yy;
+    x.strokeStyle=pal.line;x.lineWidth=1.5;
+    for(i=0;i<=rows;i++){x.beginPath();x.moveTo(M,ty+i*rh);x.lineTo(M+tw,ty+i*rh);x.stroke();}
+    for(i=0;i<=3;i++){x.beginPath();x.moveTo(M+i*cw,ty);x.lineTo(M+i*cw,ty+rows*rh);x.stroke();}
+    for(i=0;i<rows;i++)for(p=0;p<3;p++){
+      x.fillStyle=p===0?pal.ink:pal.soft;
+      x.fillRect(M+p*cw+14,ty+i*rh+16,30+Math.random()*(cw-60),6);
+    }
+    yy=ty+rows*rh+46;
+    x.strokeStyle=pal.ink;x.lineWidth=2;x.beginPath();
+    var sx=M+30,sy=yy;
+    x.moveTo(sx,sy);x.bezierCurveTo(sx+30,sy-26,sx+58,sy+18,sx+92,sy-6);
+    x.bezierCurveTo(sx+110,sy-18,sx+124,sy+6,sx+142,sy-2);x.stroke();
+    x.fillStyle=pal.soft;x.fillRect(LW-M-150,yy-6,150,8);
+    x.save();x.translate(LW-M-78,ty-16);x.rotate(-0.16);
+    x.strokeStyle=pal.seal;x.lineWidth=3;
+    x.beginPath();x.ellipse(0,0,52,34,0,0,Math.PI*2);x.stroke();
+    x.beginPath();x.ellipse(0,0,44,26,0,0,Math.PI*2);x.lineWidth=1.5;x.stroke();
+    for(i=0;i<5;i++){x.fillStyle=pal.seal;x.fillRect(-36+i*16,-7,9,13);}
+    x.restore();
+    var g=x.createLinearGradient(0,0,LW,0);
+    g.addColorStop(0,"rgba(0,0,0,.06)");g.addColorStop(.04,"rgba(0,0,0,0)");
+    g.addColorStop(.96,"rgba(0,0,0,0)");g.addColorStop(1,"rgba(0,0,0,.06)");
+    x.fillStyle=g;x.fillRect(0,0,LW,LH);
+    return c.toDataURL("image/jpeg",full?.88:.62);
+  }
+
+  /* ── 旋转样式：竖版框内旋转 90° 需缩到 1/√2 才不溢出 ── */
+  function applyRot(img,rot,lb){
+    img.style.maxWidth="";img.style.maxHeight="";
+    if(rot===0){img.style.transform="";}
+    else if(rot===180){img.style.transform="rotate(180deg)";}
+    else{
+      img.style.transform="rotate("+rot+"deg) scale("+(lb?1:0.70711)+")";
+      if(lb){img.style.maxWidth="78vh";img.style.maxHeight="86vw";}
+    }
+  }
+
+  /* ── 页面渲染 ── */
+  function render(){
+    var grid=$("grid");grid.innerHTML="";
+    pages.forEach(function(pg,i){
+      var d=document.createElement("div");
+      d.className="thumb"+(popIds.indexOf(pg.id)>=0?" pop":"");
+      d.draggable=true;d.dataset.id=pg.id;
+      var frame=document.createElement("div");frame.className="frame";
+      var img=document.createElement("img");img.src=pg.thumb;img.alt="第"+(i+1)+"页";
+      applyRot(img,pg.rot,false);img.draggable=false;
+      frame.appendChild(img);
+      var pn=document.createElement("span");pn.className="pn mono";pn.textContent=i+1;
+      var grip=document.createElement("span");grip.className="grip";grip.textContent="⠿";grip.title="按住拖动排序";
+      var zoom=document.createElement("span");zoom.className="zoom";zoom.textContent="双击放大";
+      var acts=document.createElement("div");acts.className="acts";
+      var rot=document.createElement("button");rot.textContent="↻";rot.title="旋转 90°";rot.type="button";
+      rot.onclick=function(e){
+        e.stopPropagation();pg.rot=(pg.rot+90)%360;render();
+        if(!$("lightbox").hidden&&pages[lbIndex]===pg){applyRot($("lb-img"),pg.rot,true);}
+      };
+      var del=document.createElement("button");del.textContent="✕";del.title="删除此页";del.className="del";del.type="button";
+      del.onclick=function(e){e.stopPropagation();pages.splice(i,1);lbIndex=-1;render();};
+      acts.appendChild(rot);acts.appendChild(del);
+      d.appendChild(frame);d.appendChild(pn);d.appendChild(grip);d.appendChild(zoom);d.appendChild(acts);
+      d.ondblclick=function(){openLb(i)};
+      grid.appendChild(d);
+    });
+    popIds=[];
+    var empty=$("empty");
+    grid.hidden=pages.length===0;
+    empty.hidden=pages.length>0;
+    $("pagecount").innerHTML="共 <b>"+pages.length+"</b> 页";
+    $("expbtn").disabled=pages.length===0||scanning;
+    $("clearbtn").disabled=pages.length===0||scanning;
+    $("exphint").hidden=pages.length>0;
+  }
+
+  function renumber(){
+    [].forEach.call($("grid").querySelectorAll(".thumb"),function(el,i){
+      el.querySelector(".pn").textContent=i+1;
+    });
+  }
+
+  /* ── 拖拽排序 ── */
+  $("grid").addEventListener("mousedown",function(e){dragBlocked=!!e.target.closest(".acts");});
+  $("grid").addEventListener("dragstart",function(e){
+    var t=e.target.closest(".thumb");
+    if(!t||dragBlocked){e.preventDefault();return;}
+    dragging=t;t.classList.add("dragging");
+    e.dataTransfer.effectAllowed="move";
+    try{e.dataTransfer.setData("text/plain",t.dataset.id);}catch(err){}
+  });
+  $("grid").addEventListener("dragover",function(e){
+    if(!dragging)return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect="move";
+    var best=null,bd=Infinity;
+    [].forEach.call($("grid").querySelectorAll(".thumb:not(.dragging)"),function(el){
+      var r=el.getBoundingClientRect();
+      var dd=Math.abs(e.clientX-(r.left+r.width/2))+Math.abs(e.clientY-(r.top+r.height/2));
+      if(dd<bd){bd=dd;best={el:el,r:r};}
+    });
+    if(!best)return;
+    var ref=e.clientX>best.r.left+best.r.width/2?best.el.nextElementSibling:best.el;
+    if(ref===dragging)ref=dragging.nextElementSibling;
+    if(ref)$("grid").insertBefore(dragging,ref);
+    else $("grid").appendChild(dragging);
+    renumber();
+  });
+  $("grid").addEventListener("drop",function(e){e.preventDefault();});
+  $("grid").addEventListener("dragend",function(){
+    if(!dragging)return;
+    dragging.classList.remove("dragging");
+    dragging=null;
+    var order=[].map.call($("grid").querySelectorAll(".thumb"),function(el){return el.dataset.id;});
+    pages.sort(function(a,b){return order.indexOf(a.id)-order.indexOf(b.id);});
+    lbIndex=-1;render();
+  });
+
+  /* ── 扫描模拟 ── */
+  function scan(){
+    if(scanning)return;
+    scanning=true;
+    $("scanbtn").disabled=true;$("expbtn").disabled=true;
+    $("prog").hidden=false;
+    var total=src==="adf"?2+Math.floor(Math.random()*5):1;
+    var done=0;
+    $("scanstatus").textContent=src==="adf"?"进纸口扫描中 · 第 1 / "+total+" 张":"玻璃板扫描中 …";
+    var t0=performance.now(),dur=src==="adf"?2600:1500;
+    function tick(now){
+      var pct=Math.min(1,(now-t0)/dur);
+      $("progbar").style.width=(pct*100).toFixed(1)+"%";
+      var cur=Math.floor(pct*total);
+      if(cur>done){
+        for(var k=done;k<cur;k++)pages.push({id:"p"+(++seq),mode:mode,thumb:drawDoc(mode,"thumb"),full:null,rot:0});
+        popIds=pages.map(function(p){return p.id});
+        done=cur;render();
+      }
+      if(pct<1){requestAnimationFrame(tick);}
+      else{
+        for(var k2=done;k2<total;k2++)pages.push({id:"p"+(++seq),mode:mode,thumb:drawDoc(mode,"thumb"),full:null,rot:0});
+        popIds=pages.map(function(p){return p.id});
+        scanning=false;$("prog").hidden=true;$("progbar").style.width="0%";
+        $("scanbtn").disabled=false;
+        $("scanstatus").textContent="已追加 "+total+" 页，可继续扫描";
+        render();
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+  $("scanbtn").onclick=scan;
+  /* 清空页面：入口在扫描键旁，危险操作要二次确认。
+     真程序用页面内确认弹窗（定稿 §八-3 不用系统 confirm）；此处为稿子从简用 confirm。 */
+  $("clearbtn").onclick=function(){
+    if(pages.length===0)return;
+    if(!window.confirm("要清空全部 "+pages.length+" 页吗？清空后无法恢复。"))return;
+    pages=[];lbIndex=-1;$("scanstatus").textContent="已清空页面";render();
+  };
+  function redetect(){
+    $("scanstatus").textContent="正在检测设备 …";
+    setTimeout(function(){
+      applyDevice(devIndex);
+      $("scanstatus").textContent="已检测到 "+DEVICES.length+" 台设备";
+    },600);
+  }
+  $("refresh").onclick=redetect;
+  $("printer").addEventListener("change",function(){applyDevice(Number(this.value))});
+
+  /* ── 灯箱 ── */
+  function openLb(i){
+    lbIndex=i;
+    var pg=pages[i];
+    if(!pg.full){                       // 模拟：高清图按需从临时目录读入并缓存
+      $("lb-img").removeAttribute("src");
+      $("lb-cap").textContent="正在载入第 "+(i+1)+" 页 …";
+      $("lightbox").hidden=false;
+      setTimeout(function(){
+        pg.full=drawDoc(pg.mode,"full");
+        if(lbIndex===i)showLb();
+      },140);
+      return;
+    }
+    showLb();$("lightbox").hidden=false;
+  }
+  function showLb(){
+    var pg=pages[lbIndex];if(!pg||!pg.full)return;
+    $("lb-img").src=pg.full;
+    applyRot($("lb-img"),pg.rot,true);
+    $("lb-cap").textContent="第 "+(lbIndex+1)+" 页 / 共 "+pages.length+" 页";
+    $("lb-prev").disabled=lbIndex===0;
+    $("lb-next").disabled=lbIndex===pages.length-1;
+  }
+  $("lb-prev").onclick=function(){if(lbIndex>0){lbIndex--;showLb();}};
+  $("lb-next").onclick=function(){if(lbIndex<pages.length-1){lbIndex++;showLb();}};
+  $("lb-rot").onclick=function(){
+    var pg=pages[lbIndex];if(!pg)return;
+    pg.rot=(pg.rot+90)%360;showLb();render();
+  };
+  $("lb-close").onclick=function(){$("lightbox").hidden=true;};
+  $("lightbox").onclick=function(e){if(e.target===$("lightbox"))$("lightbox").hidden=true;};
+
+  /* ── 导出对话框 ── */
+  $("expbtn").onclick=function(){
+    var d=new Date(),pad=function(n){return(n<10?"0":"")+n};
+    $("fname").value="扫描_"+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"_"+pad(d.getHours())+pad(d.getMinutes());
+    $("expdone").hidden=true;$("exp-go").textContent="导出";$("exp-go").disabled=false;
+    $("exp-cancel").textContent="取消";
+    $("expdlg").hidden=false;
+  };
+  $("exp-cancel").onclick=function(){$("expdlg").hidden=true;};
+  $("expdlg").onclick=function(e){if(e.target===$("expdlg"))$("expdlg").hidden=true;};
+  /* 点"导出"→ 弹系统另存为（预填文件名，起始目录=上次目录）。完成后
+     按钮变"再导出一次"，左侧变"完成"；导出不清空页面。 */
+  $("exp-go").onclick=function(){
+    var btn=$("exp-go");
+    if(btn.disabled)return;
+    btn.disabled=true;btn.textContent="正在导出 …";
+    setTimeout(function(){
+      $("expdone").hidden=false;
+      $("expdone-n").textContent = fmt==="pdf"
+        ? pages.length+" 页"
+        : "（"+pages.length+" 张）";
+      $("exp-cancel").textContent="完成";
+      btn.textContent="再导出一次";btn.disabled=false;
+    },1100);
+  };
+
+  document.addEventListener("keydown",function(e){
+    if(e.key==="Escape"){$("lightbox").hidden=true;$("expdlg").hidden=true;}
+    if($("lightbox").hidden)return;
+    if(e.key==="ArrowLeft")$("lb-prev").click();
+    if(e.key==="ArrowRight")$("lb-next").click();
+  });
+
+  /* 首帧：预置 3 页示例（示例数据，非用户文件） */
+  pages=[
+    {id:"p"+(++seq),mode:"color",thumb:drawDoc("color","thumb"),full:null,rot:0},
+    {id:"p"+(++seq),mode:"color",thumb:drawDoc("color","thumb"),full:null,rot:0},
+    {id:"p"+(++seq),mode:"color",thumb:drawDoc("color","thumb"),full:null,rot:0}
+  ];
+  applyDevice(0);
+  render();
+})();
+</script>

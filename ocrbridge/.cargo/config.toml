@@ -1,0 +1,6 @@
+# 静态 CRT（libcmt），与 Go 侧链接的 CRT 一致。
+# 实测 staticlib 的 .drectve 里不带 /DEFAULTLIB（CRT 选择由最终链接器决定），
+# 但保留此配置：如果将来加 cc-rs 编译的 C 依赖，它会从这个 flag 取 CRT 模型。
+# 注意：RUSTFLAGS 环境变量会整个覆盖这里的 [target.*].rustflags，构建脚本别设它。
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

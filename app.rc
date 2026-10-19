@@ -1,0 +1,30 @@
+﻿// Windows 资源：exe 图标 + 版本信息。
+// 由 justfile 的 icon 配方用 windres 编成 rsrc_windows_amd64.syso（Go 自动链接）。
+// 图标 ID 固定 1：资源管理器/任务栏取第一个图标组作为 exe 显示图标。
+//
+// 坑：本文件必须存成 UTF-8 **带 BOM**。rc.exe 对没有 BOM 的文件按系统
+// ANSI 代码页（本机 936）解析，下面的中文字符串会把词法分析搞乱、报 RC2104；
+// winresource/构建脚本会吞掉 rc 的失败，结果是 exe 静默无图标。
+
+1 ICON "app.ico"
+
+1 VERSIONINFO
+FILEVERSION     0,1,0,0
+PRODUCTVERSION  0,1,0,0
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "080404b0"  // 简体中文 (0804) + Unicode (04b0)
+    BEGIN
+      VALUE "FileDescription", "惠普MFP打印机扫描工具"
+      VALUE "ProductName",     "SimpleMFPScan"
+      VALUE "FileVersion",     "0.1.0"
+      VALUE "ProductVersion",  "0.1.0"
+      VALUE "OriginalFilename","SimpleMFPScan.exe"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0804, 1200
+  END
+END
