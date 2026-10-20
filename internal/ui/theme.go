@@ -1,6 +1,6 @@
 // 微信风格的浅色主题：浅灰画布、白色卡片，绿色只给主操作与选中态。
 // 界面层统一从这里取色，view.go 不写死色值。
-package main
+package ui
 
 import "github.com/egoist/mygo/ui"
 
@@ -36,7 +36,7 @@ var (
 
 // 版式度量。
 const (
-	titleBarHeight  = 46
+	TitleBarHeight  = 46
 	statusBarHeight = 52
 	railWidth       = 348
 )

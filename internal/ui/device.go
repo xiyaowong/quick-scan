@@ -1,21 +1,24 @@
 // 设备检测与扫描编排。
 //
 // 全部在网络里完成（eSCL over HTTP），不再有子进程：
-// 发现 = mDNS 浏览 _uscan._tcp（discovery.go），探测/扫描 = escl.go。
+// 发现 = mDNS 浏览 _uscan._tcp（scanner.Discover），探测/扫描走 eSCL（scanner.Probe / scanner.Scan）。
 //
 // 打开设备的动作只在 probe（用户选定了某台）和 scan（真要扫）里发生：
 // 未选中的设备只出现在名单里，不为它们付连接代价。
-package main
+package ui
 
 import (
 	"context"
 	"sort"
+
+	"sscan/internal/platform"
+	"sscan/internal/scanner"
 )
 
 // startup 启动编排：先用缓存把上次的设备立刻显示出来并验证，
 // 同时后台跑 mDNS 全量发现；发现结果回来后再无感合并。
 func (a *app) startup() {
-	if devs, selected := loadDeviceCache(); len(devs) > 0 {
+	if devs, selected := scanner.LoadCache(); len(devs) > 0 {
 		a.applyCached(devs, selected)
 		a.probeCached()
 	}
@@ -33,10 +36,10 @@ func (a *app) startDetect() {
 	if len(a.devices) == 0 {
 		a.hint = "正在检测设备 …"
 	}
-	win.Update(func() {})
+	Win.Update(func() {})
 	go func() {
-		devs, err := discoverDevices(context.Background())
-		win.Update(func() {
+		devs, err := scanner.Discover(context.Background())
+		Win.Update(func() {
 			a.detecting = false
 			if err != nil {
 				if len(a.devices) == 0 {
@@ -77,7 +80,7 @@ func (a *app) recheckAll() {
 
 // applyCached 把缓存名单放进状态，先全部当"未探测"。
 // 能力字段仍然可用，所以界面选项立刻就是正确的；在线状态等探测确认。
-func (a *app) applyCached(devs []DeviceInfo, selected string) {
+func (a *app) applyCached(devs []scanner.DeviceInfo, selected string) {
 	a.devGen++
 	a.probeSeq++
 	a.devices = nil
@@ -122,7 +125,7 @@ func (a *app) probeCached() {
 //   - 同一端点保留原 Idx、能力与探测结果，只更新名字；
 //   - 新设备分配新 Idx，排在后面等待探测；
 //   - 缓存里既没被发现、也没连上的端点删除（避免名单越积越脏）。
-func (a *app) mergeDetected(found []DeviceInfo) {
+func (a *app) mergeDetected(found []scanner.DeviceInfo) {
 	// mDNS 一个都没回，可能是组播被防火墙挡了，不等于设备不存在。
 	// 保留缓存名单，在线与否交给 HTTP 探测判断。
 	if len(found) == 0 {
@@ -137,12 +140,12 @@ func (a *app) mergeDetected(found []DeviceInfo) {
 	}
 	byKey := make(map[string]int, len(a.devices))
 	for i := range a.devices {
-		byKey[deviceKey(a.devices[i])] = i
+		byKey[scanner.DeviceKey(a.devices[i])] = i
 	}
 	seen := make(map[string]bool, len(found))
 	var added []int
 	for _, d := range found {
-		key := deviceKey(d)
+		key := scanner.DeviceKey(d)
 		if key == "" || seen[key] {
 			continue
 		}
@@ -163,7 +166,7 @@ func (a *app) mergeDetected(found []DeviceInfo) {
 	kept := a.devices[:0]
 	for _, d := range a.devices {
 		// 正在探测的缓存设备先留着：结果回来再决定去留。
-		if seen[deviceKey(d)] || (a.probed[d.Idx] && d.Online) || d.Idx == a.probingIdx {
+		if seen[scanner.DeviceKey(d)] || (a.probed[d.Idx] && d.Online) || d.Idx == a.probingIdx {
 			kept = append(kept, d)
 		}
 	}
@@ -212,7 +215,7 @@ func (a *app) probeFirstUnprobed() bool {
 //	probeFirstOnline —— 检测完，按名单顺序依次试，选中第一台能连上的
 //	probeSelected    —— 用户手动选了某台，只探这一台，并立即作废自动接力
 //
-// 身份一律用 DeviceInfo.Idx（发现下标），不用列表位置也不用名字：
+// 身份一律用 scanner.DeviceInfo.Idx（发现下标），不用列表位置也不用名字：
 // 列表会被 sortDevices 按在线状态重排，而两台打印机重名是常事。
 
 func (a *app) probeSelected() {
@@ -251,7 +254,7 @@ func (a *app) probeFirstOnline() {
 // requestProbe 启动一次对设备下标 idx 的探测（忙则排队）。
 // auto=true 是接力中的一环：用户一旦手动选择（userPicked）就整条作废。
 func (a *app) requestProbe(idx int, auto bool) {
-	if win == nil { // 单元测试/无窗口环境：不发起真实网络探测
+	if Win == nil { // 单元测试/无窗口环境：不发起真实网络探测
 		return
 	}
 	if a.listIndex(idx) < 0 {
@@ -273,10 +276,10 @@ func (a *app) requestProbe(idx int, auto bool) {
 	a.hint = "正在连接 " + a.devices[cur].DisplayName() + " …"
 	gen := a.devGen
 	dev := a.devices[cur] // 拷贝：探测在后台写，结果回主线程再落进状态
-	win.Update(func() {})
+	Win.Update(func() {})
 	go func() {
-		err := probeDevice(context.Background(), &dev)
-		win.Update(func() {
+		err := scanner.Probe(context.Background(), &dev)
+		Win.Update(func() {
 			// 更新的探测/整体重建已经接管：这单结果一个字都不能写回状态，
 			// 尤其不能把 a.probing 清掉——那会让新探测误以为空闲。
 			if seq != a.probeSeq {
@@ -381,7 +384,7 @@ func (a *app) sortDevices() {
 	}
 	sort.SliceStable(order, func(x, y int) bool { return rank(order[x]) < rank(order[y]) })
 
-	newDevs := make([]DeviceInfo, len(a.devices))
+	newDevs := make([]scanner.DeviceInfo, len(a.devices))
 	for i, old := range order {
 		newDevs[i] = a.devices[old]
 	}
@@ -396,7 +399,7 @@ func (a *app) sortDevices() {
 // applyDetect 探测结果落进状态。此时只有名单没有能力（探测是按需的），
 // 默认参数等 probe 拿到能力后再调（applyDefaults）。
 // 列表整体重建：代际号 +1，让还在路上的旧探测结果过期作废。
-func (a *app) applyDetect(devs []DeviceInfo) {
+func (a *app) applyDetect(devs []scanner.DeviceInfo) {
 	a.devGen++
 	a.probeSeq++ // 作废还在路上的旧探测
 	a.devices = nil
@@ -424,22 +427,22 @@ func (a *app) applyDefaults(li int) {
 		return
 	}
 	d := &a.devices[li]
-	if !d.colorOK(ColorColor) {
-		if d.colorOK(ColorGray) {
+	if !d.ColorOK(ColorColor.key()) {
+		if d.ColorOK(ColorGray.key()) {
 			a.color = ColorGray
 		} else {
 			a.color = ColorBW
 		}
 	}
-	if !d.sizeOK(SizeA4) {
+	if !d.SizeOK(SizeA4.key()) {
 		a.size = SizeLetter
 	}
 	// 清晰度/用途只在当前选择不被支持时才改，保留用户已经选好的值。
-	if !d.dpiOK(a.dpi) {
-		a.dpi = d.defaultDPI()
+	if !d.HasDPI(a.dpi) {
+		a.dpi = d.DefaultDPI()
 	}
-	if !d.intentOK(a.intent) {
-		a.intent = d.defaultIntent()
+	if !d.HasIntent(a.intent) {
+		a.intent = d.DefaultIntent()
 	}
 	a.feeder = false
 }
@@ -456,20 +459,20 @@ func (a *app) startScan() {
 		a.scanStatus = "玻璃板扫描中 …"
 	}
 	dev := a.devices[a.devSel]
-	opts := ScanOptions{
-		Color:  a.color,
+	opts := scanner.Options{
+		Color:  a.color.key(),
 		DPI:    a.dpi,
-		Size:   a.size,
+		Size:   a.size.key(),
 		Feeder: a.feeder,
 		Intent: a.intent,
 	}
-	_ = ensurePagesDir()
-	dir := pagesDir()
+	_ = platform.EnsurePagesDir()
+	dir := platform.PagesDir()
 	a.saveCache() // 用户真正用起来的设备，下次启动优先显示
 
 	go func() {
-		files, err := scanDocuments(context.Background(), &dev, opts, dir)
-		win.Update(func() {
+		files, err := scanner.Scan(context.Background(), &dev, opts, dir)
+		Win.Update(func() {
 			a.scanning = false
 			if err != nil {
 				a.scanStatus = err.Error()
@@ -484,7 +487,7 @@ func (a *app) startScan() {
 
 // addPage 扫描完成 → 解码缩略图 → 追加进页面区
 func (a *app) addPage(path string) {
-	full, err := decodeImage(path)
+	full, err := scanner.Decode(path)
 	if err != nil {
 		a.scanStatus = "扫描结果读取失败：" + err.Error()
 		return

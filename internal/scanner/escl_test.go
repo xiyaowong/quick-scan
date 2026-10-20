@@ -1,4 +1,4 @@
-package main
+package scanner
 
 import (
 	"bytes"
@@ -81,12 +81,12 @@ func TestParseCapabilities(t *testing.T) {
 	if caps.ADF == nil {
 		t.Fatal("ADF not detected")
 	}
-	for _, c := range []ColorMode{ColorColor, ColorGray, ColorBW} {
+	for _, c := range []string{ColorModeColor, ColorModeGray, ColorModeBW} {
 		if !caps.supportsColor(c) {
 			t.Errorf("color %v should be supported", c)
 		}
 	}
-	for _, s := range []PaperSize{SizeA4, SizeA5, SizeLetter} {
+	for _, s := range []string{PaperA4, PaperA5, PaperLetter} {
 		if !caps.supportsSize(s) {
 			t.Errorf("size %v should be supported", s)
 		}
@@ -119,13 +119,13 @@ func TestParseCapabilitiesRangeAndNarrowPlaten(t *testing.T) {
 	if got := caps.resolutions(); len(got) != 2 || got[0] != 300 || got[1] != 600 {
 		t.Errorf("range resolutions = %v", got)
 	}
-	if caps.supportsSize(SizeLetter) {
+	if caps.supportsSize(PaperLetter) {
 		t.Error("Letter should not fit a 2480x3508 area")
 	}
-	if !caps.supportsSize(SizeA4) {
+	if !caps.supportsSize(PaperA4) {
 		t.Error("A4 should fit")
 	}
-	if caps.supportsColor(ColorColor) != true || caps.supportsColor(ColorGray) != true {
+	if caps.supportsColor(ColorModeColor) != true || caps.supportsColor(ColorModeGray) != true {
 		t.Error("missing color caps should not restrict choices")
 	}
 }
@@ -133,7 +133,7 @@ func TestParseCapabilitiesRangeAndNarrowPlaten(t *testing.T) {
 func TestBuildScanSettings(t *testing.T) {
 	in := &inputCaps{MaxWidth: 2550, MaxHeight: 4200}
 	got := string(buildScanSettings("2.63", "image/jpeg", "RGB24", "Platen",
-		ScanOptions{Color: ColorColor, DPI: 300, Size: SizeA4}, in))
+		Options{Color: ColorModeColor, DPI: 300, Size: PaperA4}, in))
 	for _, want := range []string{
 		"<pwg:Version>2.63</pwg:Version>",
 		"<pwg:Width>2480</pwg:Width>",
@@ -152,7 +152,7 @@ func TestBuildScanSettings(t *testing.T) {
 	}
 
 	got = string(buildScanSettings("2.63", "image/jpeg", "RGB24", "ADF",
-		ScanOptions{Color: ColorColor, DPI: 600, Size: SizeA4, Feeder: true, Intent: "Photo"}, in))
+		Options{Color: ColorModeColor, DPI: 600, Size: PaperA4, Feeder: true, Intent: "Photo"}, in))
 	if !strings.Contains(got, "<scan:InputSource>ADF</scan:InputSource>") ||
 		!strings.Contains(got, "<scan:ADFMode>Simplex</scan:ADFMode>") {
 		t.Errorf("ADF settings wrong\n%s", got)
@@ -308,7 +308,7 @@ func tinyJPEG(t *testing.T) []byte {
 func TestProbeAndScanPlaten(t *testing.T) {
 	fs := newFakeScanner(t, 1)
 	d := fs.device()
-	if err := probeDevice(context.Background(), &d); err != nil {
+	if err := Probe(context.Background(), &d); err != nil {
 		t.Fatal(err)
 	}
 	if !d.Online || !d.Feeder || d.Name != "HP Laser MFP 136nw" {
@@ -319,8 +319,8 @@ func TestProbeAndScanPlaten(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	files, err := scanDocuments(context.Background(), &d,
-		ScanOptions{Color: ColorColor, DPI: 300, Size: SizeA4, Intent: "Photo"}, dir)
+	files, err := Scan(context.Background(), &d,
+		Options{Color: ColorModeColor, DPI: 300, Size: PaperA4, Intent: "Photo"}, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,12 +342,12 @@ func TestProbeAndScanPlaten(t *testing.T) {
 func TestScanADFMultiplePages(t *testing.T) {
 	fs := newFakeScanner(t, 3)
 	d := fs.device()
-	if err := probeDevice(context.Background(), &d); err != nil {
+	if err := Probe(context.Background(), &d); err != nil {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	files, err := scanDocuments(context.Background(), &d,
-		ScanOptions{Color: ColorGray, DPI: 300, Size: SizeA4, Feeder: true}, dir)
+	files, err := Scan(context.Background(), &d,
+		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,28 +372,28 @@ func TestDPIChoicesAndIntentFallback(t *testing.T) {
 		Resolutions: []float32{300, 100, 200, 200},
 		Intents:     []string{"Document", "Photo"},
 	}
-	if got := dpiChoices(d); len(got) != 3 || got[0] != 100 || got[1] != 200 || got[2] != 300 {
+	if got := d.DPIs(); len(got) != 3 || got[0] != 100 || got[1] != 200 || got[2] != 300 {
 		t.Fatalf("dpiChoices = %v", got)
 	}
-	if !d.dpiOK(200) || d.dpiOK(600) || d.defaultDPI() != 300 {
-		t.Fatalf("dpi helpers wrong: ok200=%v ok600=%v default=%d", d.dpiOK(200), d.dpiOK(600), d.defaultDPI())
+	if !d.HasDPI(200) || d.HasDPI(600) || d.DefaultDPI() != 300 {
+		t.Fatalf("dpi helpers wrong: ok200=%v ok600=%v default=%d", d.HasDPI(200), d.HasDPI(600), d.DefaultDPI())
 	}
-	if !d.intentOK("photo") || d.intentOK("Preview") || d.defaultIntent() != "Document" {
+	if !d.HasIntent("photo") || d.HasIntent("Preview") || d.DefaultIntent() != "Document" {
 		t.Fatalf("intent helpers wrong: photo=%v preview=%v default=%q",
-			d.intentOK("photo"), d.intentOK("Preview"), d.defaultIntent())
+			d.HasIntent("photo"), d.HasIntent("Preview"), d.DefaultIntent())
 	}
 
 	// 300 不在列表里：取最接近的一档
 	near := &DeviceInfo{Resolutions: []float32{150, 600}}
-	if got := near.defaultDPI(); got != 150 {
+	if got := near.DefaultDPI(); got != 150 {
 		t.Errorf("nearest dpi = %d, want 150", got)
 	}
 
 	// 没上报能力：保持 300/600 兜底，不限制
-	if got := dpiChoices(&DeviceInfo{}); len(got) != 2 || got[0] != 300 || got[1] != 600 {
+	if got := (&DeviceInfo{}).DPIs(); len(got) != 2 || got[0] != 300 || got[1] != 600 {
 		t.Errorf("fallback dpis = %v", got)
 	}
-	if got := intentChoices(&DeviceInfo{}); len(got) != 1 || got[0] != defaultIntent {
+	if got := (&DeviceInfo{}).IntentChoices(); len(got) != 1 || got[0] != DefaultIntent {
 		t.Errorf("fallback intents = %v", got)
 	}
 
@@ -404,7 +404,7 @@ func TestDPIChoicesAndIntentFallback(t *testing.T) {
 	if got := pickIntent(in, "TextAndGraphic"); got != "Document" {
 		t.Errorf("pickIntent fallback = %q", got)
 	}
-	if got := pickIntent(nil, ""); got != defaultIntent {
+	if got := pickIntent(nil, ""); got != DefaultIntent {
 		t.Errorf("pickIntent default = %q", got)
 	}
 }
@@ -413,7 +413,7 @@ func TestProbeOffline(t *testing.T) {
 	d := DeviceInfo{Name: "gone", IP: "192.0.2.1", Port: 9, Path: "eSCL"}
 	ctx, cancel := context.WithTimeout(context.Background(), 200_000_000) // 200ms
 	defer cancel()
-	if err := probeDevice(ctx, &d); err == nil {
+	if err := Probe(ctx, &d); err == nil {
 		t.Fatal("expected failure")
 	}
 	if d.Online {

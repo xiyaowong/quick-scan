@@ -26,10 +26,10 @@ ocr:
     Write-Host '[ocr] ocrbridge.lib 完成'
 
 # ── 2. 生成 Windows 资源（exe 图标 + 版本信息）──
-# windres 把 app.rc 编成 COFF 对象；命名为 rsrc_windows_amd64.syso 放在主包目录里，
+# windres 把 app.rc 编成 COFF 对象；放到 main 包目录（cmd/sscan）里，
 # Go 的内部链接器会自动带上。app.rc 必须保持 UTF-8 BOM（无 BOM 时 rc 静默失败）。
 icon:
-    windres -i app.rc -o rsrc_windows_amd64.syso -O coff --target=pe-x86-64; \
+    windres -i app.rc -o cmd\sscan\rsrc_windows_amd64.syso -O coff --target=pe-x86-64; \
     if ($LASTEXITCODE -ne 0) { throw 'windres 编资源失败' }; \
     Write-Host '[icon] rsrc_windows_amd64.syso 完成'
 
@@ -43,7 +43,7 @@ ui: icon ocr
     $env:CGO_ENABLED = '1'; \
     $env:GOARCH = 'amd64'; \
     if (-not $env:CC) { $env:CC = if (Get-Command clang -ErrorAction SilentlyContinue) { (Get-Command clang).Source } else { 'D:\Scoop\apps\llvm\current\bin\clang.exe' } }; \
-    go build -trimpath -tags mygo_noinspector -ldflags '-s -w' -o sscan.exe .; \
+    go build -trimpath -tags mygo_noinspector -ldflags '-s -w' -o sscan.exe ./cmd/sscan; \
     if ($LASTEXITCODE -ne 0) { throw '主程序编译失败' }; \
     Write-Host '[ui] sscan.exe 完成'
 
@@ -91,7 +91,7 @@ package: build
 # 清理构建产物
 # 每个目标都先 Test-Path：删不存在的路径会让进程退出码变 1，just 会当成配方失败。
 clean:
-    foreach ($f in 'sscan.exe','rsrc_windows_amd64.syso') { if (Test-Path $f) { Remove-Item -Force $f } }; \
+    foreach ($f in 'sscan.exe','cmd\sscan\rsrc_windows_amd64.syso') { if (Test-Path $f) { Remove-Item -Force $f } }; \
     foreach ($d in 'ocrbridge\target','dist') { if (Test-Path $d) { Remove-Item -Recurse -Force $d } }; \
     Write-Host '[clean] 完成'
 

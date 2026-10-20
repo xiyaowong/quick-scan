@@ -7,19 +7,23 @@ import (
 	"fmt"
 	"os"
 
+	"sscan/internal/platform"
+	"sscan/internal/scanner"
+	appui "sscan/internal/ui"
+
 	"github.com/egoist/mygo"
-	"github.com/egoist/mygo/ui"
+	myui "github.com/egoist/mygo/ui"
 )
 
 func main() {
 	// 先脱钩再干别的：晚一步用户就会看见控制台闪一下。
 	// 从终端启动时控制台留着，报错能看见；双击时摘掉，不留终端窗口。
-	detachIfStandalone()
+	platform.DetachIfStandalone()
 
 	// 隐藏 CLI：--ocr-test <图片> 走一遍 OCR 文件名候选管线（无窗口、不碰打印机），
 	// 给验收/调试用。正常启动不传参，走 GUI。
 	if len(os.Args) >= 3 && os.Args[1] == "--ocr-test" {
-		runOcrTest(os.Args[2])
+		scanner.RunOcrTest(os.Args[2])
 		return
 	}
 	if err := run(); err != nil {
@@ -40,15 +44,15 @@ func run() (err error) {
 		}
 	}()
 
-	cleanupStaleTemp()
+	platform.CleanupStale()
 	// 内嵌 OCR 模型先落临时目录——扫描后识别首页标题要用
-	if err := ensureAssets(); err != nil {
+	if err := platform.EnsureAssets(); err != nil {
 		return err
 	}
 
-	app := newApp()
+	app := appui.New()
 	mygo.App.WhenReady(func() {
-		win = mygo.NewWindow(mygo.WindowOptions{
+		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:          "simple-scan",
 			Width:          1180,
 			Height:         820,
@@ -57,27 +61,25 @@ func run() (err error) {
 			MinHeight:      660,
 			// 自绘标题栏：系统窗口按钮浮在内容右上角，品牌区可拖动窗口。
 			TitleBarStyle:  mygo.TitleBarHidden,
-			TitleBarHeight: titleBarHeight,
-			Content:        ui.View(app.view),
+			TitleBarHeight: appui.TitleBarHeight,
+			Content:        myui.View(app.View),
 		})
+		appui.Win = win
 		// 关窗拦截：有未导出页面时先弹确认
 		win.OnClose(func(e *mygo.CloseEvent) {
-			if app.quitConfirmed || len(app.pages) == 0 {
-				return // 放行（quitConfirmed 由确认对话框置位）
+			if app.CloseAllowed() {
+				return // 放行（确认退出后由对话框置位）
 			}
 			e.PreventDefault()
-			app.dlg = DlgQuitConfirm
+			app.AskQuit()
 			win.Update(func() {})
 		})
 		// 启动：先用 %TEMP% 缓存立刻显示上次的设备，同时后台 mDNS 全量刷新
-		app.startup()
+		app.Startup()
 	})
 	if err := mygo.App.Run(); err != nil {
 		return err
 	}
-	cleanupTemp() // 窗口全关后清理 %TEMP% 里的扫描页
+	platform.Cleanup() // 窗口全关后清理 %TEMP% 里的扫描页
 	return nil
 }
-
-// win 是主窗口句柄，后台 goroutine 通过 win.Update 回主线程刷新界面。
-var win *mygo.Window

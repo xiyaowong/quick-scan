@@ -2,7 +2,7 @@
 
 > 2026-10-19。扫描引擎从 TWAIN 换成 **eSCL**（Mopria/AirPrint 扫描协议）。
 > 目标是去掉 Windows 驱动依赖与 32 位子进程：eSCL 就是局域网里的 HTTP + XML，
-> 自己实现即可。代码对应：`discovery.go`（发现）、`escl.go`（协议）、`device.go`（编排）。
+> 自己实现即可。代码对应：`internal/scanner`（发现、协议）、`internal/ui/device.go`（编排）。
 
 ## 1. 设备发现（mDNS）
 

@@ -1,6 +1,6 @@
 // 界面图标：全部内联 SVG，启动时解析一次。
 // ui.Icon 会用文字颜色重绘图形，所以这里只描路径，不关心最终色值。
-package main
+package ui
 
 import "github.com/egoist/mygo/ui"
 

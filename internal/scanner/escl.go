@@ -8,7 +8,7 @@
 //	DELETE /eSCL/ScanJobs/<id>            → 收尾/取消
 //
 // 只用 IPv4（见 discovery.go）。设备端口与 eSCL 路径来自 mDNS TXT，缺省 80 / "eSCL"。
-package main
+package scanner
 
 import (
 	"bytes"
@@ -34,7 +34,8 @@ const (
 	jobTimeout      = 15 * time.Second  // 建任务
 	pageTimeout     = 120 * time.Second // 取一张：600dpi 冷启动也要等
 	defaultVersion  = "2.63"
-	defaultIntent   = "Document"
+	// DefaultIntent 设备没上报用途时的规范默认值。
+	DefaultIntent = "Document"
 )
 
 // scannerHTTP 直连局域网设备：显式禁用代理。
@@ -288,16 +289,27 @@ func appendUniqueFloat(dst []float32, v float32) []float32 {
 	return append(dst, v)
 }
 
+// 界面向 eSCL 传的语义键。具体协议的 ColorMode 名由设备原样上报值决定。
+const (
+	ColorModeColor = "color"
+	ColorModeGray  = "gray"
+	ColorModeBW    = "bw"
+
+	PaperA4     = "a4"
+	PaperA5     = "a5"
+	PaperLetter = "letter"
+)
+
 // paperUnits 纸张尺寸（1/300 英寸，纵向），对应界面的 A4/A5/Letter。
-var paperUnits = map[PaperSize][2]int{
-	SizeA4:     {2480, 3508},
-	SizeA5:     {1748, 2480},
-	SizeLetter: {2550, 3300},
+var paperUnits = map[string][2]int{
+	PaperA4:     {2480, 3508},
+	PaperA5:     {1748, 2480},
+	PaperLetter: {2550, 3300},
 }
 
 // supportsSize 设备最大扫描区域能否放下这张纸（允许横竖两个方向）。
 // Max 缺失 = 没上报 = 不限制。
-func (in *inputCaps) supportsSize(s PaperSize) bool {
+func (in *inputCaps) supportsSize(s string) bool {
 	if in == nil || in.MaxWidth <= 0 || in.MaxHeight <= 0 {
 		return true
 	}
@@ -307,27 +319,27 @@ func (in *inputCaps) supportsSize(s PaperSize) bool {
 	return fit(w, h) || fit(h, w)
 }
 
-func (in *inputCaps) supportsColor(c ColorMode) bool {
+func (in *inputCaps) supportsColor(key string) bool {
 	if in == nil || len(in.Colors) == 0 {
 		return true
 	}
 	for _, k := range in.Colors {
-		if k == c.key() {
+		if k == key {
 			return true
 		}
 	}
 	return false
 }
 
-func (c *scannerCapabilities) supportsColor(mode ColorMode) bool {
+func (c *scannerCapabilities) supportsColor(key string) bool {
 	if c.Platen == nil && c.ADF == nil {
 		return true // 能力没上报：不限制
 	}
-	return (c.Platen != nil && c.Platen.supportsColor(mode)) ||
-		(c.ADF != nil && c.ADF.supportsColor(mode))
+	return (c.Platen != nil && c.Platen.supportsColor(key)) ||
+		(c.ADF != nil && c.ADF.supportsColor(key))
 }
 
-func (c *scannerCapabilities) supportsSize(s PaperSize) bool {
+func (c *scannerCapabilities) supportsSize(s string) bool {
 	if c.Platen == nil && c.ADF == nil {
 		return true // 能力没上报：不限制
 	}
@@ -384,9 +396,9 @@ func pickFormat(formats []string) string {
 
 // ── 探测 ──
 
-// probeDevice 读设备能力并写回 DeviceInfo。HTTP 通了就算在线：
+// Probe 读设备能力并写回 DeviceInfo。HTTP 通了就算在线：
 // 能力解析失败只意味着选项全开，不是离线。
-func probeDevice(ctx context.Context, d *DeviceInfo) error {
+func Probe(ctx context.Context, d *DeviceInfo) error {
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
 
@@ -416,17 +428,17 @@ func probeDevice(ctx context.Context, d *DeviceInfo) error {
 	}
 	// 能力并集写进 DeviceInfo，界面据此置灰选项
 	d.Colors = nil
-	for _, c := range []ColorMode{ColorColor, ColorGray, ColorBW} {
+	for _, c := range []string{ColorModeColor, ColorModeGray, ColorModeBW} {
 		if caps.supportsColor(c) {
-			d.Colors = append(d.Colors, c.key())
+			d.Colors = append(d.Colors, c)
 		}
 	}
 	d.Resolutions = caps.resolutions()
 	d.Intents = caps.intents()
 	d.Sizes = nil
-	for _, s := range []PaperSize{SizeA4, SizeA5, SizeLetter} {
+	for _, s := range []string{PaperA4, PaperA5, PaperLetter} {
 		if caps.supportsSize(s) {
-			d.Sizes = append(d.Sizes, s.key())
+			d.Sizes = append(d.Sizes, s)
 		}
 	}
 	d.Feeder = caps.ADF != nil
@@ -435,20 +447,20 @@ func probeDevice(ctx context.Context, d *DeviceInfo) error {
 
 // ── 扫描 ──
 
-// ScanOptions 一次扫描的参数（界面 → eSCL）。
-type ScanOptions struct {
-	Color  ColorMode
+// Options 一次扫描的参数（界面 → eSCL）。
+type Options struct {
+	Color  string // color / gray / bw
 	DPI    int
-	Size   PaperSize
+	Size   string // a4 / a5 / letter
 	Feeder bool
 	Intent string // eSCL Intent；空 = Document
 }
 
-// scanDocuments 建任务 → 逐张取回 → 落盘，返回图片路径（ADF 一批多张）。
+// Scan 建任务 → 逐张取回 → 落盘，返回图片路径（ADF 一批多张）。
 // 所有请求都直连设备；失败时已建的任务会被 DELETE 掉，不留给打印机。
-func scanDocuments(ctx context.Context, d *DeviceInfo, opts ScanOptions, dir string) ([]string, error) {
+func Scan(ctx context.Context, d *DeviceInfo, opts Options, dir string) ([]string, error) {
 	if d.caps == nil {
-		if err := probeDevice(ctx, d); err != nil {
+		if err := Probe(ctx, d); err != nil {
 			return nil, err
 		}
 	}
@@ -532,22 +544,22 @@ func (d *DeviceInfo) resourceURL(name string) string {
 }
 
 // pickColorMode 优先用设备原样上报的 ColorMode（比如 RGB48），没有就按规范给默认值。
-func pickColorMode(in *inputCaps, c ColorMode) string {
+func pickColorMode(in *inputCaps, key string) string {
 	if in != nil {
 		for _, m := range in.RawModes {
-			if colorKey(m) == c.key() {
+			if colorKey(m) == key {
 				return m
 			}
 		}
 	}
-	return esclColorName(c.key())
+	return esclColorName(key)
 }
 
 // pickIntent 把界面选的 Intent 落到设备支持的值上：精确匹配优先，
 // 不支持就退回 Document，再不行用设备报的第一个；设备没报就按规范发 Document。
 func pickIntent(in *inputCaps, want string) string {
 	if want == "" {
-		want = defaultIntent
+		want = DefaultIntent
 	}
 	if in == nil || len(in.Intents) == 0 {
 		return want
@@ -558,7 +570,7 @@ func pickIntent(in *inputCaps, want string) string {
 		}
 	}
 	for _, v := range in.Intents {
-		if strings.EqualFold(v, defaultIntent) {
+		if strings.EqualFold(v, DefaultIntent) {
 			return v
 		}
 	}
@@ -578,7 +590,7 @@ func esclColorName(key string) string {
 
 // buildScanSettings 生成 ScanSettings XML。尺寸按纸张物理尺寸 × dpi 计算，
 // 超出设备最大扫描区域就夹到边界（打印机不会因为请求大了几像素就拒绝）。
-func buildScanSettings(version, format, colorMode, source string, opts ScanOptions, in *inputCaps) []byte {
+func buildScanSettings(version, format, colorMode, source string, opts Options, in *inputCaps) []byte {
 	w, h := paperUnits[opts.Size][0], paperUnits[opts.Size][1]
 	scale := float64(opts.DPI) / 300.0
 	pw := int(float64(w)*scale + 0.5)
@@ -599,7 +611,7 @@ func buildScanSettings(version, format, colorMode, source string, opts ScanOptio
 	}
 	intent := opts.Intent
 	if intent == "" {
-		intent = defaultIntent
+		intent = DefaultIntent
 	}
 	xml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <scan:ScanSettings xmlns:scan="http://schemas.hp.com/imaging/escl/2011/05/03" xmlns:pwg="http://www.pwg.org/schemas/2010/12/sm">

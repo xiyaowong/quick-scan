@@ -1,11 +1,9 @@
-// 主程序状态模型。所有状态只活在本进程内存里。
-package main
+// 界面状态：设备名单、扫描参数、页面、弹窗与灯箱。
+// 所有状态只活在本进程内存里。
+package ui
 
 import (
-	"fmt"
-	"path/filepath"
-	"sort"
-	"strings"
+	"sscan/internal/scanner"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -88,156 +86,6 @@ const (
 	ExportPDF ExportFormat = iota // 合并成一个 PDF
 	ExportJPG                     // 每页一张 JPG
 )
-
-// ── 设备 ──
-
-// DeviceInfo 一台 eSCL 扫描仪。发现阶段只有名字/IP；探测后填能力。
-// 列表会按在线状态重排，所以**位置不能当句柄**——Idx 才是（发现时的下标）。
-type DeviceInfo struct {
-	Idx         int       // 发现顺序下标：probe/scan 调度靠它找回设备
-	Name        string    // 设备名（mDNS TXT ty，缺省用服务实例名）
-	IP          string    // IPv4
-	Port        int       // eSCL 端口（mDNS SRV，缺省 80）
-	Path        string    // eSCL 资源路径（TXT rs，缺省 "eSCL"）
-	Online      bool      // 探测成功
-	Colors      []string  // "color"|"gray"|"bw"
-	Resolutions []float32 // dpi 列表（设备支持多少就列多少）
-	Sizes       []string  // "a4"|"a5"|"letter"
-	Intents     []string  // eSCL Intent 原样值（Document / TextAndGraphic / Photo / Preview …）
-	Feeder      bool      // 有无进纸口（ADF）
-
-	caps *scannerCapabilities // 探测到的原始能力，扫描时下发任务用
-}
-
-// DisplayName 设备选择器的显示格式：设备名 (IPv4)
-func (d *DeviceInfo) DisplayName() string {
-	name := d.Name
-	if name == "" {
-		name = d.IP
-	}
-	return fmt.Sprintf("%s (%s)", name, d.IP)
-}
-
-func (d *DeviceInfo) colorOK(c ColorMode) bool {
-	if len(d.Colors) == 0 {
-		return true // 能力缺失时兜底全开
-	}
-	for _, s := range d.Colors {
-		if s == c.key() {
-			return true
-		}
-	}
-	return false
-}
-func (d *DeviceInfo) sizeOK(s PaperSize) bool {
-	if len(d.Sizes) == 0 {
-		return true
-	}
-	for _, x := range d.Sizes {
-		if x == s.key() {
-			return true
-		}
-	}
-	return false
-}
-
-// ── 清晰度 / 用途 ──
-
-// dpiChoices 设备支持的清晰度（升序）。能力没上报时保留 300/600 两档兜底。
-func dpiChoices(dev *DeviceInfo) []int {
-	if dev == nil || len(dev.Resolutions) == 0 {
-		return []int{300, 600}
-	}
-	var out []int
-	for _, r := range dev.Resolutions {
-		if v := int(r + 0.5); v > 0 && !containsInt(out, v) {
-			out = append(out, v)
-		}
-	}
-	sort.Ints(out)
-	return out
-}
-
-func (d *DeviceInfo) dpiOK(v int) bool {
-	if d == nil || len(d.Resolutions) == 0 {
-		return true
-	}
-	for _, r := range d.Resolutions {
-		if int(r+0.5) == v {
-			return true
-		}
-	}
-	return false
-}
-
-// defaultDPI 优先 300；设备没有 300 时取最接近的一档。
-func (d *DeviceInfo) defaultDPI() int {
-	choices := dpiChoices(d)
-	best := choices[0]
-	for _, v := range choices {
-		if absInt(v-300) < absInt(best-300) {
-			best = v
-		}
-	}
-	return best
-}
-
-// intentChoices 设备支持的用途；没上报时不提供切换（只有规范默认值）。
-func intentChoices(dev *DeviceInfo) []string {
-	if dev == nil || len(dev.Intents) == 0 {
-		return []string{defaultIntent}
-	}
-	return dev.Intents
-}
-
-func (d *DeviceInfo) intentOK(v string) bool {
-	if d == nil || len(d.Intents) == 0 {
-		return v == "" || strings.EqualFold(v, defaultIntent)
-	}
-	for _, x := range d.Intents {
-		if strings.EqualFold(x, v) {
-			return true
-		}
-	}
-	return false
-}
-
-func (d *DeviceInfo) defaultIntent() string {
-	if d == nil || len(d.Intents) == 0 {
-		return defaultIntent
-	}
-	for _, x := range d.Intents {
-		if strings.EqualFold(x, defaultIntent) {
-			return x
-		}
-	}
-	return d.Intents[0]
-}
-
-func containsInt(xs []int, v int) bool {
-	for _, x := range xs {
-		if x == v {
-			return true
-		}
-	}
-	return false
-}
-
-func containsString(xs []string, v string) bool {
-	for _, x := range xs {
-		if strings.EqualFold(x, v) {
-			return true
-		}
-	}
-	return false
-}
-
-func absInt(v int) int {
-	if v < 0 {
-		return -v
-	}
-	return v
-}
 
 // ── 页面 ──
 
@@ -354,7 +202,7 @@ func (lb *Lightbox) clampPan() {
 
 type app struct {
 	// 设备
-	devices    []DeviceInfo
+	devices    []scanner.DeviceInfo
 	devSel     int
 	nextDevIdx int // 单调递增的设备身份；缓存与 mDNS 合并时保持稳定
 	devGen     int // 设备列表代际号：整体重建时 +1，过期的探测结果据此丢弃
@@ -368,7 +216,7 @@ type app struct {
 	// userPicked 用户手动选过设备：接力让位，不再自动改选中项。重新检测时清零。
 	userPicked   bool
 	pendingProbe bool         // 探测期间又切了设备：上一个回来后补探
-	probed       map[int]bool // 已探测过的设备（键是 DeviceInfo.Idx，不是列表下标）
+	probed       map[int]bool // 已探测过的设备（键是 scanner.DeviceInfo.Idx，不是列表下标）
 	detecting    bool
 	devGrid      ui.GridState
 	// hint 状态栏右侧唯一的一行提示（检测进度 / 正在连哪台 / 驱动报的失败原因）。
@@ -377,7 +225,7 @@ type app struct {
 
 	// 扫描参数（界面右侧）
 	size   PaperSize
-	dpi    int    // 设备支持的清晰度（见 dpiChoices）
+	dpi    int    // 设备支持的清晰度（见 DeviceInfo.DPIs）
 	intent string // eSCL Intent，默认 Document
 	color  ColorMode
 	feeder bool // false=玻璃板 true=进纸口
@@ -424,7 +272,7 @@ func newApp() *app {
 		probed:       map[int]bool{},
 		size:         SizeA4,
 		dpi:          300,
-		intent:       defaultIntent,
+		intent:       scanner.DefaultIntent,
 		color:        ColorColor,
 		nextPageID:   1,
 		exportSingle: -1,
@@ -435,7 +283,7 @@ func newApp() *app {
 	return a
 }
 
-func (a *app) current() *DeviceInfo {
+func (a *app) current() *scanner.DeviceInfo {
 	if a.devSel >= 0 && a.devSel < len(a.devices) {
 		return &a.devices[a.devSel]
 	}
@@ -451,7 +299,7 @@ func (a *app) allocDevIdx() int {
 
 func (a *app) indexByKey(key string) int {
 	for i := range a.devices {
-		if deviceKey(a.devices[i]) == key {
+		if scanner.DeviceKey(a.devices[i]) == key {
 			return i
 		}
 	}
@@ -459,14 +307,11 @@ func (a *app) indexByKey(key string) int {
 }
 
 func (a *app) saveCache() {
-	saveDeviceCache(a.devices, deviceKeyPtr(a.current()))
-}
-
-func deviceKeyPtr(d *DeviceInfo) string {
-	if d == nil {
-		return ""
+	selected := ""
+	if d := a.current(); d != nil {
+		selected = scanner.DeviceKey(*d)
 	}
-	return deviceKey(*d)
+	scanner.SaveCache(a.devices, selected)
 }
 
 // refreshState 根据当前选中设备的探测结果刷新状态灯。
@@ -564,9 +409,3 @@ func clamp(v, lo, hi float32) float32 {
 	}
 	return v
 }
-
-// tempDir 本会话的临时根目录
-func tempDir() string { return tempRoot }
-
-// pagesDir 扫描原图目录
-func pagesDir() string { return filepath.Join(tempRoot, "pages") }

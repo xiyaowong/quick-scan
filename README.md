@@ -38,3 +38,11 @@ just run        # 构建并启动
 ```
 
 程序不写注册表、不建配置目录。临时文件放在 `%TEMP%\sscan_<pid>\`，退出时清理。
+
+## 目录
+
+- `cmd/sscan/` 程序入口、窗口生命周期
+- `internal/ui/` 界面与交互
+- `internal/scanner/` eSCL 发现、扫描、导出、OCR
+- `internal/platform/` 临时目录、内嵌模型、控制台脱离
+

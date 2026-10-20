@@ -3,13 +3,14 @@
 // 目的只有一个——启动时先把上次的打印机名单显示出来，同时后台做 mDNS 全量发现，
 // 列表到手后无感合并。缓存不是配置：不写注册表、不建用户目录，系统清理临时目录
 // （存储感知/磁盘清理）时随手丢掉也不影响正确性。每次启动都会重新探测与发现。
-package main
+package scanner
 
 import (
 	"encoding/json"
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -48,9 +49,9 @@ type cachedDevice struct {
 
 func deviceCachePath() string { return filepath.Join(deviceCacheDir(), "devices.json") }
 
-// loadDeviceCache 读上次的设备名单。任何异常都当成"没有缓存"，
+// LoadCache 读上次的设备名单。任何异常都当成"没有缓存"，
 // 缓存只用于提速，绝不能影响启动或正确性。
-func loadDeviceCache() ([]DeviceInfo, string) {
+func LoadCache() ([]DeviceInfo, string) {
 	data, err := os.ReadFile(deviceCachePath())
 	if err != nil {
 		return nil, ""
@@ -69,18 +70,18 @@ func loadDeviceCache() ([]DeviceInfo, string) {
 			break
 		}
 		d, ok := cd.deviceInfo()
-		if !ok || seen[deviceKey(d)] {
+		if !ok || seen[DeviceKey(d)] {
 			continue
 		}
-		seen[deviceKey(d)] = true
+		seen[DeviceKey(d)] = true
 		out = append(out, d) // Online 先置 false：缓存的状态不算数，启动后重新探测
 	}
 	return out, c.Selected
 }
 
-// saveDeviceCache 原子写入当前名单。空名单不覆盖旧缓存——
+// SaveCache 原子写入当前名单。空名单不覆盖旧缓存——
 // 发现失败时保留上一次的线索，下次启动仍然可以先显示出来。
-func saveDeviceCache(devs []DeviceInfo, selected string) {
+func SaveCache(devs []DeviceInfo, selected string) {
 	out := make([]cachedDevice, 0, len(devs))
 	for _, d := range devs {
 		if len(out) >= deviceCacheLimit {
@@ -187,15 +188,15 @@ func cleanStrings(xs []string) []string {
 	var out []string
 	for _, x := range xs {
 		x = strings.TrimSpace(x)
-		if x != "" && !containsString(out, x) {
+		if x != "" && !slices.Contains(out, x) {
 			out = append(out, x)
 		}
 	}
 	return out
 }
 
-// deviceKey 端点的身份：IP + 端口 + eSCL 路径。列表排序/显示名都不参与。
-func deviceKey(d DeviceInfo) string {
+// DeviceKey 端点的身份：IP + 端口 + eSCL 路径。列表排序/显示名都不参与。
+func DeviceKey(d DeviceInfo) string {
 	port := d.Port
 	if port <= 0 || port > 65535 {
 		port = defaultPort

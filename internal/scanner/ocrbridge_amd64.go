@@ -1,11 +1,11 @@
 //go:build windows && amd64 && cgo
 
 // ocrbridge 的 cgo 绑定：真实现（静态链 Rust staticlib）。
-// 识别在主程序进程内跑（64 位），模型三件套从 exe 同目录 models/ 读。
-package main
+// 识别在主程序进程内跑（64 位），模型三件套由 platform 从内嵌资产释放。
+package scanner
 
 /*
-#cgo LDFLAGS: -L${SRCDIR}/ocrbridge/target/x86_64-pc-windows-msvc/release -locrbridge -lntdll
+#cgo LDFLAGS: -L${SRCDIR}/../../ocrbridge/target/x86_64-pc-windows-msvc/release -locrbridge -lntdll
 
 #include <stdlib.h>
 #include <stddef.h>
@@ -38,6 +38,8 @@ import (
 	"path/filepath"
 	"sync"
 	"unsafe"
+
+	"sscan/internal/platform"
 )
 
 // ocrLine 一行识别结果（与 Rust 端 #[repr(C)] 对应的 Go 视图）。
@@ -61,7 +63,7 @@ var (
 // ocrEngine 懒加载模型（首用时一次性）
 func ocrEngine() (unsafe.Pointer, error) {
 	ocrOnce.Do(func() {
-		dir := modelDir()
+		dir := platform.ModelDir()
 		det := C.CString(filepath.Join(dir, "det.onnx"))
 		defer C.free(unsafe.Pointer(det))
 		rec := C.CString(filepath.Join(dir, "rec.onnx"))

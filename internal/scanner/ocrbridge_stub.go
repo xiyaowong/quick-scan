@@ -2,7 +2,7 @@
 
 // ocrbridge 的占位实现：非 64 位 Windows / 未开 cgo 的构建
 // （go vet、纯 Go 交叉检查等场景）。识别永远报"不可用"，编排层静默吞掉。
-package main
+package scanner
 
 import "fmt"
 

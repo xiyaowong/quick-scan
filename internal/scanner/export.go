@@ -1,7 +1,7 @@
 // 导出：PDF（合并成一个文件）或每页一张 JPG。
 // 原图是 eSCL 返回的 JPEG，导出时按旋转烘焙后重新编码。PDF 用 gopdf（成熟库）。
 // 进度：页粒度回调（done/total），导出对话框用它画进度条。
-package main
+package scanner
 
 import (
 	"fmt"
@@ -11,61 +11,55 @@ import (
 	"github.com/signintech/gopdf"
 )
 
-// exportOutcome 导出结果
-type exportOutcome struct {
+// ExportOutcome 导出结果
+type ExportOutcome struct {
 	Display   string
 	Dir       string
 	File      string
 	PageCount int
 }
 
-// pageWork 一页的导出输入（路径 + 旋转角）
-type pageWork struct {
+// ExportPage 一页的导出输入（路径 + 旋转角）
+type ExportPage struct {
 	Path string
 	Rot  int
 }
 
-// exportProgress 页粒度进度回调：done 从 1 数到 total
-type exportProgress func(done, total int)
+// ProgressFunc 页粒度进度回调：done 从 1 数到 total
+type ProgressFunc func(done, total int)
 
-// exportPages 导出总入口
-func exportPages(pages []Page, fmtOpt ExportFormat, dir, name string, prog exportProgress) (*exportOutcome, error) {
+// ExportPages 导出总入口。asPDF=false 时每页存一张 JPG。
+func ExportPages(pages []ExportPage, asPDF bool, dir, name string, prog ProgressFunc) (*ExportOutcome, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("建目录失败: %w", err)
-	}
-	works := make([]pageWork, len(pages))
-	for i, p := range pages {
-		works[i] = pageWork{Path: p.FullPath, Rot: p.Rot}
 	}
 	if prog == nil {
 		prog = func(int, int) {}
 	}
-	switch fmtOpt {
-	case ExportPDF:
+	if asPDF {
 		path := uniquePath(dir, name, "pdf")
-		if err := exportPDF(works, path, prog); err != nil {
+		if err := exportPDF(pages, path, prog); err != nil {
 			return nil, err
 		}
-		return &exportOutcome{Display: path, Dir: filepath.Dir(path), File: path, PageCount: len(pages)}, nil
-	default: // ExportJPG
-		written, err := exportJPGs(works, dir, name, prog)
-		if err != nil {
-			return nil, err
-		}
-		n := len(written)
-		var display string
-		if n == 1 {
-			display = filepath.Base(written[0]) + "（共 1 张）"
-		} else {
-			display = fmt.Sprintf("%s  ~  %s  （共 %d 张）",
-				filepath.Base(written[0]), filepath.Base(written[n-1]), n)
-		}
-		var file string
-		if n == 1 {
-			file = written[0]
-		}
-		return &exportOutcome{Display: display, Dir: dir, File: file, PageCount: n}, nil
+		return &ExportOutcome{Display: path, Dir: filepath.Dir(path), File: path, PageCount: len(pages)}, nil
 	}
+	written, err := exportJPGs(pages, dir, name, prog)
+	if err != nil {
+		return nil, err
+	}
+	n := len(written)
+	var display string
+	if n == 1 {
+		display = filepath.Base(written[0]) + "（共 1 张）"
+	} else {
+		display = fmt.Sprintf("%s  ~  %s  （共 %d 张）",
+			filepath.Base(written[0]), filepath.Base(written[n-1]), n)
+	}
+	var file string
+	if n == 1 {
+		file = written[0]
+	}
+	return &ExportOutcome{Display: display, Dir: dir, File: file, PageCount: n}, nil
 }
 
 // uniquePath 已存在则加 (2)(3)… 后缀，不覆盖用户文件
@@ -82,15 +76,15 @@ func uniquePath(dir, name, ext string) string {
 }
 
 // exportPDF 导出为单个 PDF（gopdf：每页一个 A4，JPG 直嵌）
-func exportPDF(pages []pageWork, outPath string, prog exportProgress) error {
+func exportPDF(pages []ExportPage, outPath string, prog ProgressFunc) error {
 	pdf := gopdf.GoPdf{}
 	pdf.Start(gopdf.Config{PageSize: *gopdf.PageSizeA4})
 	for i, pw := range pages {
-		img, err := decodeImage(pw.Path)
+		img, err := Decode(pw.Path)
 		if err != nil {
 			return fmt.Errorf("读原图失败: %w", err)
 		}
-		img = rotate90(img, pw.Rot)
+		img = Rotate90(img, pw.Rot)
 		jpg, err := encodeJPEG(img, 90)
 		if err != nil {
 			return fmt.Errorf("JPG 编码失败: %w", err)
@@ -114,14 +108,14 @@ func exportPDF(pages []pageWork, outPath string, prog exportProgress) error {
 }
 
 // exportJPGs 导出为多张 JPG：name_1.jpg, name_2.jpg …
-func exportJPGs(pages []pageWork, dir, name string, prog exportProgress) ([]string, error) {
+func exportJPGs(pages []ExportPage, dir, name string, prog ProgressFunc) ([]string, error) {
 	var written []string
 	for i, pw := range pages {
-		img, err := decodeImage(pw.Path)
+		img, err := Decode(pw.Path)
 		if err != nil {
 			return nil, fmt.Errorf("读原图失败: %w", err)
 		}
-		img = rotate90(img, pw.Rot)
+		img = Rotate90(img, pw.Rot)
 		jpg, err := encodeJPEG(img, 88)
 		if err != nil {
 			return nil, fmt.Errorf("JPG 编码失败: %w", err)

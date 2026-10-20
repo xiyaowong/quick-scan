@@ -1,6 +1,6 @@
-// 图像处理：解码、缩略图、旋转、缩放。
-// 原图是 eSCL 直接返回的 JPEG/PNG，界面只加载低清缩略图，双击才读原图。
-package main
+// 图像处理：解码、旋转、缩放。
+// 原图是 eSCL 直接返回的 JPEG/PNG；界面只加载低清缩略图，双击才读原图。
+package scanner
 
 import (
 	"bytes"
@@ -8,17 +8,15 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
-	"math"
 	"os"
 
-	"github.com/egoist/mygo/ui"
 	"golang.org/x/image/bmp"
 	"golang.org/x/image/draw"
 )
 
-// decodeImage 按文件头解码 BMP / JPEG / PNG 为 *image.RGBA。
+// Decode 按文件头解码 BMP / JPEG / PNG 为 *image.RGBA。
 // 扫描结果通常是 JPEG；BMP 分支保留给 OCR 测试与旧测试样张。
-func decodeImage(path string) (*image.RGBA, error) {
+func Decode(path string) (*image.RGBA, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -53,21 +51,8 @@ func toRGBA(src image.Image) *image.RGBA {
 	return dst
 }
 
-// thumbnail 生成 240px 级的低清缩略图位图
-func thumbnail(src *image.RGBA, maxDim int) *ui.Bitmap {
-	w, h := src.Bounds().Dx(), src.Bounds().Dy()
-	scale := float32(maxDim) / float32(max(w, h))
-	if scale >= 1 {
-		return ui.NewBitmap(src)
-	}
-	nw, nh := max(1, int(float32(w)*scale)), max(1, int(float32(h)*scale))
-	// 缩略图从 240px 级降到 ~150px 级别时用近邻足够快也够清楚，
-	// 但从 300dpi 原图（约 2500px）直缩时近邻会丢行——统一走 CatmullRom
-	return ui.NewBitmap(resize(src, nw, nh))
-}
-
-// resize 高质量缩放（CatmullRom：缩略图/OCR 预处理共用）
-func resize(src *image.RGBA, nw, nh int) *image.RGBA {
+// Resize 高质量缩放（CatmullRom：缩略图/OCR 预处理共用）
+func Resize(src *image.RGBA, nw, nh int) *image.RGBA {
 	if src.Bounds().Dx() == nw && src.Bounds().Dy() == nh {
 		return src
 	}
@@ -85,7 +70,7 @@ func resizeToLongEdge(src *image.RGBA, maxEdge int) *image.RGBA {
 	}
 	nw := max(1, w*maxEdge/long)
 	nh := max(1, h*maxEdge/long)
-	return resize(src, nw, nh)
+	return Resize(src, nw, nh)
 }
 
 // subImage 裁剪（不拷贝底层数组的子区域视图转独立 RGBA）
@@ -112,8 +97,8 @@ func subImage(src *image.RGBA, x0, y0, x1, y1 int) *image.RGBA {
 	return dst
 }
 
-// rotate90 顺时针旋转 90° 的倍数（deg ∈ 0/90/180/270）
-func rotate90(src *image.RGBA, deg int) *image.RGBA {
+// Rotate90 顺时针旋转 90° 的倍数（deg ∈ 0/90/180/270）
+func Rotate90(src *image.RGBA, deg int) *image.RGBA {
 	switch deg % 360 {
 	case 90:
 		return rot90cw(src)
@@ -180,18 +165,4 @@ func encodePNG(src *image.RGBA) ([]byte, error) {
 	var buf bytes.Buffer
 	err := png.Encode(&buf, src)
 	return buf.Bytes(), err
-}
-
-// exePath 本程序 exe 的绝对路径
-func exePath() (string, error) {
-	return os.Executable()
-}
-
-var _ = math.MaxInt32 // 保证 math 引用（若后续删用同步删）
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

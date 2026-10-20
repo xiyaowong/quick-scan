@@ -1,4 +1,4 @@
-package main
+package scanner
 
 import (
 	"context"
@@ -25,7 +25,7 @@ func TestLiveDiscovery(t *testing.T) {
 	liveEnabled(t)
 	ctx, cancel := context.WithTimeout(context.Background(), discoverWait+2*time.Second)
 	defer cancel()
-	devs, err := discoverDevices(ctx)
+	devs, err := Discover(ctx)
 	if err != nil {
 		t.Fatalf("discovery: %v", err)
 	}
@@ -46,17 +46,17 @@ func TestLiveCache(t *testing.T) {
 	withTempCache(t)
 
 	d := DeviceInfo{Name: "live", IP: ip, Port: 80, Path: "eSCL"}
-	if err := probeDevice(context.Background(), &d); err != nil {
+	if err := Probe(context.Background(), &d); err != nil {
 		t.Fatalf("probe: %v", err)
 	}
-	saveDeviceCache([]DeviceInfo{d}, deviceKey(d))
+	SaveCache([]DeviceInfo{d}, DeviceKey(d))
 
-	got, selected := loadDeviceCache()
+	got, selected := LoadCache()
 	if len(got) != 1 {
 		t.Fatalf("loaded %d devices", len(got))
 	}
-	if selected != deviceKey(d) {
-		t.Errorf("selected = %q, want %q", selected, deviceKey(d))
+	if selected != DeviceKey(d) {
+		t.Errorf("selected = %q, want %q", selected, DeviceKey(d))
 	}
 	c := got[0]
 	if c.Online {
@@ -65,7 +65,7 @@ func TestLiveCache(t *testing.T) {
 	if c.IP != ip || len(c.Colors) == 0 || len(c.Resolutions) == 0 {
 		t.Fatalf("cache lost caps: %+v", c)
 	}
-	if err := probeDevice(context.Background(), &c); err != nil {
+	if err := Probe(context.Background(), &c); err != nil {
 		t.Fatalf("re-probe cached device: %v", err)
 	}
 	if !c.Online {
@@ -83,7 +83,7 @@ func TestLiveScan(t *testing.T) {
 
 	// 1) 发现（顺便确认 mDNS 能给出这台设备的端口/路径）
 	ctx, cancel := context.WithTimeout(context.Background(), discoverWait+2*time.Second)
-	devs, err := discoverDevices(ctx)
+	devs, err := Discover(ctx)
 	cancel()
 	if err != nil {
 		t.Logf("discovery 失败（继续用默认 eSCL 路径直连）：%v", err)
@@ -102,7 +102,7 @@ func TestLiveScan(t *testing.T) {
 	}
 
 	// 2) 能力
-	if err := probeDevice(context.Background(), &dev); err != nil {
+	if err := Probe(context.Background(), &dev); err != nil {
 		t.Fatalf("probe: %v", err)
 	}
 	t.Logf("online=%v name=%q colors=%v sizes=%v res=%v intents=%v feeder=%v",
@@ -111,11 +111,11 @@ func TestLiveScan(t *testing.T) {
 	// 3) 真扫一张（A4 300dpi 彩色玻璃板）
 	intent := os.Getenv("SIMPLESCAN_INTENT")
 	if intent == "" {
-		intent = defaultIntent
+		intent = DefaultIntent
 	}
 	start := time.Now()
-	files, err := scanDocuments(context.Background(), &dev, ScanOptions{
-		Color: ColorColor, DPI: 300, Size: SizeA4, Intent: intent,
+	files, err := Scan(context.Background(), &dev, Options{
+		Color: ColorModeColor, DPI: 300, Size: PaperA4, Intent: intent,
 	}, t.TempDir())
 	if err != nil {
 		t.Fatalf("scan: %v", err)
@@ -123,7 +123,7 @@ func TestLiveScan(t *testing.T) {
 	if len(files) != 1 {
 		t.Fatalf("platen scan returned %d pages", len(files))
 	}
-	img, err := decodeImage(files[0])
+	img, err := Decode(files[0])
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}

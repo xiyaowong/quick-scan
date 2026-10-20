@@ -1,10 +1,14 @@
 // 主视图：标题栏 + 页面区 + 设置栏 + 状态栏，弹层单独一层。
 // mygo 是即时模式：view 是状态的函数，每帧重建。
-package main
+package ui
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 	"time"
+
+	"sscan/internal/scanner"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -28,7 +32,7 @@ func (a *app) view(c *ui.Context) {
 
 func (a *app) titleBar(c *ui.Context, t *ui.Theme) {
 	bar := c.TitleBar()
-	h := float32(titleBarHeight)
+	h := float32(TitleBarHeight)
 	if bar.Height > h {
 		h = bar.Height
 	}
@@ -150,19 +154,17 @@ func (a *app) pageCell(c *ui.Context, t *ui.Theme, i int) {
 				TextColor(ui.RGB(255, 255, 255))
 		})
 		hairline(c)
-		ui.Row(c).Height(44).Padding(0, 7, 0, 8).AlignItems(ui.Center).Gap(2).Children(func() {
-			ui.Icon(c, icoGrip).FontSize(12).TextColor(colFaint).Tooltip("按住拖动排序")
+		// 看图不用单独按钮：整张卡片都能点，悬停时图上还会提示「点击看大图」。
+		ui.Row(c).Height(42).Padding(0, 8, 0, 8).AlignItems(ui.Center).Gap(2).Children(func() {
+			ui.Icon(c, icoGrip).FontSize(11).TextColor(colFaint).Tooltip("按住拖动排序")
 			ui.Row(c).Grow(1)
-			if cardButton(c, icoEye, "查看").Clicked() {
-				a.openLightbox(i)
-			}
 			if iconButton(c, icoRotate, "旋转 90°", 30).Clicked() {
 				a.rotatePage(p.ID)
 			}
 			if iconButton(c, icoDownload, "导出此页", 30).Clicked() {
 				a.openExport(i)
 			}
-			ui.Row(c).Width(1).Height(16).Background(colLineSoft).Margin(2, 0, 2, 0)
+			ui.Row(c).Width(1).Height(14).Background(colLineSoft).Margin(3, 0, 3, 0)
 			if dangerIconButton(c, icoTrash, "删除此页", 30).Clicked() {
 				a.deletePage(p.ID)
 			}
@@ -218,7 +220,7 @@ func (a *app) sizeField(c *ui.Context) {
 	sectionLabel(c, "纸张大小", fixed)
 	enabled := []bool{true, true, true}
 	if dev != nil {
-		enabled = []bool{dev.sizeOK(SizeA4), dev.sizeOK(SizeA5), dev.sizeOK(SizeLetter)}
+		enabled = []bool{dev.SizeOK(SizeA4.key()), dev.SizeOK(SizeA5.key()), dev.SizeOK(SizeLetter.key())}
 	}
 	cur := int(a.size)
 	if segmented(c, &cur, []string{"A4", "A5", "Letter"}, enabled) {
@@ -227,13 +229,13 @@ func (a *app) sizeField(c *ui.Context) {
 }
 
 // sizeSelectable 只有一种纸型可选时才标"固定"。
-func (a *app) sizeSelectable(dev *DeviceInfo) bool {
+func (a *app) sizeSelectable(dev *scanner.DeviceInfo) bool {
 	if dev == nil {
 		return false
 	}
 	n := 0
 	for _, s := range []PaperSize{SizeA4, SizeA5, SizeLetter} {
-		if dev.sizeOK(s) {
+		if dev.SizeOK(s.key()) {
 			n++
 		}
 	}
@@ -241,11 +243,10 @@ func (a *app) sizeSelectable(dev *DeviceInfo) bool {
 }
 
 func (a *app) dpiField(c *ui.Context) {
-	dev := a.current()
-	dpis := dpiChoices(dev)
+	dpis := a.current().DPIs()
 	sectionLabel(c, "清晰度", len(dpis) <= 1)
 	curDPI := a.dpi
-	if !containsInt(dpis, curDPI) {
+	if !slices.Contains(dpis, curDPI) {
 		curDPI = dpis[0]
 	}
 	curName := dpiLabel(curDPI)
@@ -289,11 +290,10 @@ func intentLabel(v string) string {
 }
 
 func (a *app) intentField(c *ui.Context) {
-	dev := a.current()
-	intents := intentChoices(dev)
+	intents := a.current().IntentChoices()
 	sectionLabel(c, "扫描内容", len(intents) <= 1)
 	cur := a.intent
-	if !containsString(intents, cur) {
+	if !slices.ContainsFunc(intents, func(x string) bool { return strings.EqualFold(x, cur) }) {
 		cur = intents[0]
 	}
 	curName := intentLabel(cur)
@@ -315,7 +315,7 @@ func (a *app) colorField(c *ui.Context) {
 	dev := a.current()
 	enabled := []bool{true, true, true}
 	if dev != nil {
-		enabled = []bool{dev.colorOK(ColorColor), dev.colorOK(ColorGray), dev.colorOK(ColorBW)}
+		enabled = []bool{dev.ColorOK(ColorColor.key()), dev.ColorOK(ColorGray.key()), dev.ColorOK(ColorBW.key())}
 	}
 	sectionLabel(c, "色彩", false)
 	cur := int(a.color)
@@ -514,7 +514,7 @@ func (a *app) overlays(c *ui.Context, t *ui.Theme) {
 			"退出", func() {
 				a.quitConfirmed = true
 				a.dlg = DlgNone
-				win.Close()
+				Win.Close()
 			})
 	case DlgClearConfirm:
 		a.confirmDialog(c, t, "要清空全部页面吗？",
@@ -566,7 +566,7 @@ func (a *app) lightboxOverlay(c *ui.Context, t *ui.Theme) {
 	// 灯箱只盖内容区：上面留出标题栏，系统的窗口按钮和拖动区域照常可用，
 	// 也不会出现“点灯箱按钮却点到最小化/关闭”的情况。
 	ui.Overlay(c, func() {
-		back := ui.Column(c).Absolute().Left(0).Top(titleBarHeight).Right(0).Bottom(0).
+		back := ui.Column(c).Absolute().Left(0).Top(TitleBarHeight).Right(0).Bottom(0).
 			Background(ui.RGBA(9, 17, 22, 0.97)).Modal()
 
 		back.Children(func() {
@@ -627,7 +627,7 @@ func (a *app) lightboxOverlay(c *ui.Context, t *ui.Theme) {
 					}
 					// 事件坐标相对灯箱层，图片的 Bounds 是窗口坐标，纵向扣掉标题栏。
 					r := img.Bounds()
-					r.Y -= titleBarHeight
+					r.Y -= TitleBarHeight
 					lb.img = r
 				} else {
 					ui.Column(c).Gap(10).Center().Children(func() {

@@ -16,7 +16,7 @@
 //	rs  eSCL 资源路径，如 "eSCL"（缺省就是 eSCL）
 //
 // 显示格式固定为 "设备名 (IPv4)"，见 DeviceInfo.DisplayName。
-package main
+package scanner
 
 import (
 	"context"
@@ -71,8 +71,8 @@ type mdnsQuery struct {
 	msg []byte
 }
 
-// discoverDevices 浏览局域网里的 eSCL 扫描仪。ctx 超时即停止，返回已找到的。
-func discoverDevices(ctx context.Context) ([]DeviceInfo, error) {
+// Discover 浏览局域网里的 eSCL 扫描仪。ctx 超时即停止，返回已找到的。
+func Discover(ctx context.Context) ([]DeviceInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, discoverWait)
 	defer cancel()
 

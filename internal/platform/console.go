@@ -7,7 +7,7 @@
 // 运行期判断把取舍还回来：进程是控制台程序，启动瞬间看一眼控制台上挂了几个
 // 进程——只有自己，说明这个控制台是双击时系统新建的，脱钩；还有别人（cmd、
 // pwsh），说明是从终端启动的，留着，报错就能被看见。
-package main
+package platform
 
 import (
 	"syscall"
@@ -20,9 +20,9 @@ var (
 	procGetConsoleProcessList = kernel32.NewProc("GetConsoleProcessList")
 )
 
-// detachIfStandalone 只在"控制台是为本进程临时新建的"时候脱钩。
+// DetachIfStandalone 只在"控制台是为本进程临时新建的"时候脱钩。
 // 必须在任何耗时工作之前调用：晚一步用户就会看见控制台闪一下。
-func detachIfStandalone() {
+func DetachIfStandalone() {
 	if procGetConsoleProcessList.Find() != nil || procFreeConsole.Find() != nil {
 		return
 	}

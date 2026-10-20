@@ -1,6 +1,6 @@
 // 通用界面组件：把设计令牌包成可复用的小部件，
 // view.go / dialog.go 只描述结构，不再逐处写颜色与悬停逻辑。
-package main
+package ui
 
 import (
 	"time"
@@ -140,27 +140,6 @@ func iconButton(c *ui.Context, ic *ui.SVG, tip string, size float32) ui.Element 
 	}
 	b.Children(func() {
 		ui.Icon(c, ic).FontSize(size * 0.52).TextColor(fg)
-	})
-	return b
-}
-
-// cardButton 页面卡片上的文字按钮：给不熟悉图标的人一个明确的「查看」入口。
-func cardButton(c *ui.Context, ic *ui.SVG, label string) ui.Element {
-	b := ui.ButtonBase(c).Height(30).Padding(0, 8, 0, 7).Radius(6).
-		Transition(ui.ElementTransition{Duration: 120 * time.Millisecond, Colors: true})
-	hover := b.Hovered()
-	if hover {
-		b.Background(colPanelHover)
-	}
-	fg := colInk
-	if hover {
-		fg = colAccent
-	}
-	b.Children(func() {
-		ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-			ui.Icon(c, ic).FontSize(12.5).TextColor(fg)
-			ui.Text(c, label).FontSize(11.5).TextColor(fg).SingleLine()
-		})
 	})
 	return b
 }

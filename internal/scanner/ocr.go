@@ -1,12 +1,11 @@
 // OCR 文件名候选：rusto-rs（纯 Rust，PP-OCRv6 模型）静态链入主程序（仅 64 位 Windows）。
 // 架子分两层：本文件是无 cgo 的编排层（后台跑、失败静默、候选进导出对话框）；
 // cgo 绑定在 ocrbridge_amd64.go（真实现）与 ocrbridge_stub.go（其它构建）。
-package main
+package scanner
 
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -14,49 +13,29 @@ import (
 	"unicode/utf8"
 )
 
-// startOCRSuggest 首页扫完后自动跑 OCR 文件名候选（后台，失败静默）。
-// 识别首页顶部标题性文字，给导出对话框提供文件名候选。
-func (a *app) startOCRSuggest() {
-	if a.ocrRunning || len(a.pages) == 0 {
-		return
-	}
-	a.ocrRunning = true
-	page := a.pages[0]
-	go func() {
-		names, err := ocrSuggest(page.FullPath, page.Rot)
-		win.Update(func() {
-			a.ocrRunning = false
-			if err != nil || len(names) == 0 {
-				return // 静默：候选是锦上添花，失败不打扰
-			}
-			a.ocrNames = names
-		})
-	}()
-}
-
-// ocrSuggest 从一页原图提取文件名候选：
+// Suggest 从一页原图提取文件名候选：
 // 解码 → 长边压到 1600（提速 + 归一）→ PNG → 识别 → 清洗/筛选/排序成候选。
 //
 // 整页识别而不是只裁顶部：①候选能来自页面任何位置的标题
 // ②不用赌"标题在上 35% 内" ③正文段落靠 markParagraphs 成组剔掉，
 // 不再依赖裁剪把正文挡在外面。代价是识别稍慢（仍远快于一次扫描）。
 // 筛选/排序全在这一侧（candidateRanking），Rust 只回原始行。
-func ocrSuggest(imgPath string, rot int) ([]string, error) {
-	r, err := ocrSuggestRanking(imgPath, rot)
+func Suggest(imgPath string, rot int) ([]string, error) {
+	r, err := SuggestRanking(imgPath, rot)
 	if err != nil {
 		return nil, err
 	}
 	return r.names(), nil
 }
 
-// ocrSuggestRanking 同 ocrSuggest，但返回完整的中间结果（调试/调参用）
-func ocrSuggestRanking(imgPath string, rot int) (*ranking, error) {
-	img, err := decodeImage(imgPath)
+// SuggestRanking 同 Suggest，但返回完整的中间结果（调试/调参用）
+func SuggestRanking(imgPath string, rot int) (*ranking, error) {
+	img, err := Decode(imgPath)
 	if err != nil {
 		return nil, err
 	}
 	if rot%360 != 0 {
-		img = rotate90(img, rot)
+		img = Rotate90(img, rot)
 	}
 	// 长边压到 1600：提速，模型内部反正会再缩
 	small := resizeToLongEdge(img, 1600)
@@ -545,33 +524,10 @@ func clamp01(v float32) float32 {
 	return v
 }
 
-// applyOCRName 应用 OCR 候选到文件名输入框：第一次替换，后续追加。
-func (a *app) applyOCRName(name string) {
-	if a.ocrPicked && a.exportFilename != "" {
-		a.exportFilename += name
-	} else {
-		a.exportFilename = name
-	}
-	a.ocrPicked = true
-}
-
-// modelDir OCR 模型三件套所在目录：从内嵌资产释放到临时目录（单文件分发）。
-// 释放失败时退回 exe 同目录的 models/（兼容老式并排摆放）。
-func modelDir() string {
-	if err := ensureAssets(); err == nil {
-		return filepath.Join(tempRoot, "models")
-	}
-	exe, err := exePath()
-	if err != nil {
-		return "models"
-	}
-	return filepath.Join(filepath.Dir(exe), "models")
-}
-
-// runOcrTest --ocr-test 的实现：对一张图片走完整候选管线并打印（验收用）。
+// RunOcrTest --ocr-test 的实现：对一张图片走完整候选管线并打印（验收用）。
 // --ocr-raw   打印全图原始识别行（不裁顶部、不过滤），看识别质量
 // --ocr-rank  打印候选打分明细（中位字号、每行的分数与惩罚项），调参用
-func runOcrTest(imgPath string) {
+func RunOcrTest(imgPath string) {
 	mode := ""
 	if len(os.Args) > 3 {
 		mode = os.Args[3]
@@ -580,7 +536,7 @@ func runOcrTest(imgPath string) {
 	switch mode {
 	case "--ocr-raw":
 		// 原始行：不裁顶部、不过滤，全图识别
-		img, err := decodeImage(imgPath)
+		img, err := Decode(imgPath)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "失败:", err)
 			os.Exit(1)
@@ -603,7 +559,7 @@ func runOcrTest(imgPath string) {
 				l.Top, l.Left, l.Width, l.Height, l.Score, l.Text)
 		}
 	case "--ocr-rank":
-		r, err := ocrSuggestRanking(imgPath, 0)
+		r, err := SuggestRanking(imgPath, 0)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "失败:", err)
 			os.Exit(1)
@@ -630,7 +586,7 @@ func runOcrTest(imgPath string) {
 			fmt.Printf("  %d. %s\n", i+1, n)
 		}
 	default:
-		names, err := ocrSuggest(imgPath, 0)
+		names, err := Suggest(imgPath, 0)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "失败:", err)
 			os.Exit(1)

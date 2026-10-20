@@ -1,11 +1,13 @@
 // 导出对话框 + 灯箱图像加载 + 页面操作。
-package main
+package ui
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
+
+	"sscan/internal/scanner"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -175,7 +177,11 @@ func (a *app) runExport() {
 		home, _ := os.UserHomeDir()
 		startDir = filepath.Join(home, "Documents", "扫描件")
 	}
-	pages := a.exportTargets()
+	targets := a.exportTargets()
+	pages := make([]scanner.ExportPage, len(targets))
+	for i, p := range targets {
+		pages[i] = scanner.ExportPage{Path: p.FullPath, Rot: p.Rot}
+	}
 
 	go func() {
 		ext, filter := "pdf", "PDF 文件"
@@ -184,12 +190,12 @@ func (a *app) runExport() {
 		}
 		def := filepath.Join(startDir, name+"."+ext)
 		path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
-			Parent:      win,
+			Parent:      Win,
 			Title:       "导出",
 			DefaultPath: def,
 			Filters:     []mygo.FileFilter{{Name: filter, Extensions: []string{ext}}},
 		})
-		win.Update(func() { a.exportPicking = false })
+		Win.Update(func() { a.exportPicking = false })
 		if err != nil || path == "" {
 			return // 用户取消
 		}
@@ -197,18 +203,18 @@ func (a *app) runExport() {
 		base := filepath.Base(path)
 		base = base[:len(base)-len(filepath.Ext(base))] // 去扩展名
 
-		win.Update(func() {
+		Win.Update(func() {
 			a.exportPhase = PhaseWorking
 			a.exportDoneN = 0
 			a.exportTotalN = len(pages)
 		})
-		out, expErr := exportPages(pages, fmt_, dir, base, func(done, total int) {
-			win.Update(func() {
+		out, expErr := scanner.ExportPages(pages, fmt_ == ExportPDF, dir, base, func(done, total int) {
+			Win.Update(func() {
 				a.exportDoneN = done
 				a.exportTotalN = total
 			})
 		})
-		win.Update(func() {
+		Win.Update(func() {
 			if expErr != nil {
 				a.exportPhase = PhaseIdle
 				a.scanStatus = "导出失败：" + expErr.Error()
@@ -241,8 +247,8 @@ func (a *app) rotatePage(id uint64) {
 		if a.pages[i].ID == id {
 			a.pages[i].Rot = (a.pages[i].Rot + 90) % 360
 			// 重烘缩略图
-			if full, err := decodeImage(a.pages[i].FullPath); err == nil {
-				rot := rotate90(full, a.pages[i].Rot)
+			if full, err := scanner.Decode(a.pages[i].FullPath); err == nil {
+				rot := scanner.Rotate90(full, a.pages[i].Rot)
 				a.pages[i].ThumbRot = thumbnail(rot, 240)
 			}
 			if a.lightbox != nil && a.lightbox.Index == i {
@@ -313,11 +319,11 @@ func (a *app) requestLightboxImage() {
 	rot := a.pages[lb.Index].Rot
 	index := lb.Index
 	go func() {
-		full, err := decodeImage(path)
+		full, err := scanner.Decode(path)
 		if err == nil && rot%360 != 0 {
-			full = rotate90(full, rot)
+			full = scanner.Rotate90(full, rot)
 		}
-		win.Update(func() {
+		Win.Update(func() {
 			lb := a.lightbox
 			if lb == nil || lb.Index != index {
 				return // 期间已翻页/关闭，丢弃过期结果
