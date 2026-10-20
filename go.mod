@@ -1,4 +1,4 @@
-module simple-scan
+module sscan
 
 go 1.27.2
 
