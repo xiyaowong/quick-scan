@@ -29,38 +29,35 @@ func (a *app) defaultFilename() string {
 func (a *app) exportDialog(c *ui.Context, t *ui.Theme) {
 	open := a.dlg == DlgExport
 	ui.Modal(c, &open, func() {
-		ui.Column(c).Width(440).Padding(20).Gap(14).Background(t.Background).
-			Radius(10).Border(1, t.Border).Children(func() {
-
+		card := ui.Column(c).Width(452).Background(colPanel).Border(1, colLine).
+			Radius(12).Clip().Shadow(0, 24, 60, 0, shadowStrong)
+		card.Children(func() {
 			title := "导出"
+			subtitle := fmt.Sprintf("导出全部 %d 页", len(a.pages))
 			if a.exportSingle >= 0 {
 				title = fmt.Sprintf("导出第 %d 页", a.exportSingle+1)
+				subtitle = fmt.Sprintf("仅导出第 %d 页（共 %d 页）", a.exportSingle+1, len(a.pages))
 			}
-			ui.Text(c, title).FontSize(16).Bold()
-			// 导出范围：单页与整份要一眼区分（旧版语义）
-			if a.exportSingle >= 0 {
-				ui.Text(c, fmt.Sprintf("仅导出第 %d 页（共 %d 页）", a.exportSingle+1, len(a.pages))).
-					FontSize(12).TextColor(t.TextMuted)
-			} else {
-				ui.Text(c, fmt.Sprintf("导出全部 %d 页", len(a.pages))).
-					FontSize(12).TextColor(t.TextMuted)
-			}
-
-			switch a.exportPhase {
-			case PhaseWorking:
-				// 页粒度进度条（mockup: .progress 4px 细条 + 计数文案）
-				frac := 0.0
-				if a.exportTotalN > 0 {
-					frac = float64(a.exportDoneN) / float64(a.exportTotalN)
+			ui.Row(c).Padding(20, 22, 0, 22).Gap(13).AlignItems(ui.Center).Children(func() {
+				badge := ui.Row(c).Size(40, 40).Radius(10).Background(colAccentSoft).Center().Shrink(0)
+				badge.Children(func() {
+					ui.Icon(c, icoDownload).FontSize(19).TextColor(colAccent)
+				})
+				ui.Column(c).Gap(3).Children(func() {
+					ui.Text(c, title).FontSize(16).FontWeight(600).TextColor(colInk)
+					ui.Text(c, subtitle).FontSize(12).TextColor(colMuted)
+				})
+			})
+			ui.Column(c).Padding(18, 22, 0, 22).Gap(16).Children(func() {
+				switch a.exportPhase {
+				case PhaseWorking:
+					a.exportProgressView(c, t)
+				case PhaseDone:
+					a.exportDoneView(c, t)
+				default:
+					a.exportFormView(c, t)
 				}
-				ui.Progress(c, frac).FillWidth()
-				ui.Text(c, fmt.Sprintf("正在导出 … %d / %d 页",
-					a.exportDoneN, a.exportTotalN)).TextColor(t.TextMuted)
-			case PhaseDone:
-				a.exportDoneView(c, t)
-			default:
-				a.exportFormView(c, t)
-			}
+			})
 		})
 	})
 	if !open {
@@ -68,35 +65,65 @@ func (a *app) exportDialog(c *ui.Context, t *ui.Theme) {
 	}
 }
 
+func (a *app) exportProgressView(c *ui.Context, t *ui.Theme) {
+	frac := 0.0
+	if a.exportTotalN > 0 {
+		frac = float64(a.exportDoneN) / float64(a.exportTotalN)
+	}
+	ui.Column(c).Gap(9).Children(func() {
+		ui.Progress(c, frac).FillWidth()
+		ui.Text(c, fmt.Sprintf("正在导出 … %d / %d 页", a.exportDoneN, a.exportTotalN)).
+			FontSize(12).TextColor(colMuted)
+	})
+}
+
 // exportFormView 格式 + 文件名 + 导出按钮
 func (a *app) exportFormView(c *ui.Context, t *ui.Theme) {
-	ui.Text(c, "格式").FontSize(13).TextColor(t.TextMuted)
-	ui.RadioGroup(c, func() {
-		ui.Radio(c, &a.exportFmt, ExportPDF, "PDF（合并成一个文件）")
-		ui.Radio(c, &a.exportFmt, ExportJPG, "图片（每页一张 JPG）")
-	})
+	sectionLabel(c, "格式", false)
+	cur := 0
+	if a.exportFmt == ExportJPG {
+		cur = 1
+	}
+	if segmented(c, &cur, []string{"PDF 文件", "每页一张图"}, nil) {
+		a.exportFmt = ExportPDF
+		if cur == 1 {
+			a.exportFmt = ExportJPG
+		}
+	}
+	if a.exportFmt == ExportJPG {
+		caption(c, "每页存成一张图片。")
+	} else {
+		caption(c, "全部页面合成一个文件。")
+	}
 
-	ui.Text(c, "文件名").FontSize(13).TextColor(t.TextMuted)
-	ui.TextInput(c, &a.exportFilename).FillWidth()
+	sectionLabel(c, "文件名", false)
+	ui.TextInput(c, &a.exportFilename).FillWidth().Height(40).Radius(8)
 
-	// OCR 文件名候选（预留：有候选时显示）。Wrap：候选多时换行，不撑破对话框
 	if len(a.ocrNames) > 0 {
-		ui.Text(c, "识别到的名称（点击使用）").FontSize(12).TextColor(t.TextMuted)
+		sectionLabel(c, "识别到的名称", false)
 		ui.Row(c).Gap(6).Wrap().Children(func() {
 			for _, name := range a.ocrNames {
 				n := name
-				if ui.Button(c, n).Clicked() {
+				b := ui.ButtonBase(c).Height(28).Padding(0, 10, 0, 10).Radius(6).
+					Background(ui.Hex("#F2F2F2"))
+				if b.Hovered() {
+					b.Background(ui.Hex("#E8E8E8"))
+				}
+				b.Children(func() {
+					ui.Text(c, n).FontSize(11.5).TextColor(colInk).SingleLine()
+				})
+				if b.Clicked() {
 					a.applyOCRName(n)
 				}
 			}
 		})
 	}
 
-	ui.Row(c).Gap(10).Justify(ui.End).Children(func() {
-		if ui.Button(c, "取消").Clicked() {
+	ui.Row(c).Padding(4, 0, 20, 0).Justify(ui.End).Gap(9).Children(func() {
+		if styledButton(c, "取消", nil, toneGhost, false).Height(38).Padding(0, 18, 0, 18).Clicked() {
 			a.dlg = DlgNone
 		}
-		if ui.PrimaryButton(c, "导出").Clicked() {
+		if styledButton(c, "导出", icoDownload, tonePrimary, false).Height(38).Clicked() {
 			a.runExport()
 		}
 	})
@@ -104,22 +131,29 @@ func (a *app) exportFormView(c *ui.Context, t *ui.Theme) {
 
 // exportDoneView 导出完成态
 func (a *app) exportDoneView(c *ui.Context, t *ui.Theme) {
-	ui.Text(c, "已导出").FontSize(14).TextColor(ui.RGB(34, 160, 90))
-	ui.Text(c, a.exportDone.Display).FontSize(13)
-	ui.Row(c).Gap(10).Justify(ui.End).Children(func() {
+	successPanel(c, "已导出", fmt.Sprintf("共 %d 页", a.exportDone.PageCount))
+	if a.exportDone.Display != "" {
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Padding(10, 12, 10, 12).
+			Radius(8).Background(colPanelSoft).Children(func() {
+			ui.Icon(c, icoFolder).FontSize(14).TextColor(colMuted).Shrink(0)
+			ui.Text(c, a.exportDone.Display).FontSize(11.5).TextColor(colMuted).
+				SingleLine()
+		})
+	}
+	ui.Row(c).Padding(4, 0, 20, 0).Justify(ui.End).Gap(9).Children(func() {
 		if a.exportDone.File != "" {
-			if ui.Button(c, "打开文件").Clicked() {
+			if styledButton(c, "打开文件", icoFile, toneGhost, false).Height(38).Clicked() {
 				mygo.Shell.OpenPath(a.exportDone.File)
 			}
 		}
-		if ui.Button(c, "打开所在文件夹").Clicked() {
+		if styledButton(c, "打开所在文件夹", icoFolder, toneGhost, false).Height(38).Clicked() {
 			target := a.exportDone.File
 			if target == "" {
 				target = a.exportDone.Dir
 			}
 			mygo.Shell.ShowItemInFolder(target)
 		}
-		if ui.PrimaryButton(c, "完成").Clicked() {
+		if styledButton(c, "完成", nil, tonePrimary, false).Height(38).Padding(0, 22, 0, 22).Clicked() {
 			a.dlg = DlgNone
 		}
 	})
@@ -293,6 +327,8 @@ func (a *app) requestLightboxImage() {
 				a.scanStatus = "原图打不开：" + err.Error()
 				return
 			}
+			bnd := full.Bounds()
+			lb.ImgW, lb.ImgH = float32(bnd.Dx()), float32(bnd.Dy())
 			lb.Full = ui.NewBitmap(full)
 		})
 	}()

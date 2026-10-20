@@ -1,19 +1,21 @@
-// 主视图：布局对照 docs/ui-mockup.html，交互语义对照设计定稿。
-// mygo 原生 UI 即时模式：view 是状态的函数，每帧重建。
+// 主视图：标题栏 + 页面区 + 设置栏 + 状态栏，弹层单独一层。
+// mygo 是即时模式：view 是状态的函数，每帧重建。
 package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
 
 func (a *app) view(c *ui.Context) {
-	// 纯白主题（定稿 §三-1）：不跟随系统深色模式，显式覆盖
+	// 固定浅色主题，不跟随系统深色模式。
 	c.SetTheme(lightTheme())
 	t := c.Theme()
 	ui.Column(c).Fill().Background(t.Background).Children(func() {
-		ui.Row(c).Grow(1).AlignItems(ui.Stretch).Children(func() {
+		a.titleBar(c, t)
+		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
 			a.pagesPanel(c, t)
 			a.settingsPanel(c, t)
 		})
@@ -22,177 +24,209 @@ func (a *app) view(c *ui.Context) {
 	a.overlays(c, t)
 }
 
+// ── 顶部：品牌标题栏（配合无边框标题样式）──
+
+func (a *app) titleBar(c *ui.Context, t *ui.Theme) {
+	bar := c.TitleBar()
+	h := float32(titleBarHeight)
+	if bar.Height > h {
+		h = bar.Height
+	}
+	row := ui.Row(c).Height(h).FillWidth().
+		Padding(0, bar.Right, 0, bar.Left).
+		Background(colBg).AlignItems(ui.Center).DragWindow()
+	row.Children(func() {
+		ui.Row(c).PaddingStart(18).Gap(9).AlignItems(ui.Center).Children(func() {
+			mark := ui.Row(c).Size(26, 26).Radius(7).Background(colAccent).Center()
+			mark.Children(func() {
+				ui.Icon(c, icoPrinter).FontSize(14).TextColor(ui.RGB(255, 255, 255))
+			})
+			ui.Text(c, "simple-scan").FontSize(13).FontWeight(500).TextColor(colInk)
+		})
+		ui.Row(c).Grow(1)
+		ui.Row(c).PaddingEnd(16).Gap(6).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Size(6, 6).Radius(3).Background(statusColor(a.devState))
+			ui.Text(c, a.statusLabel()).FontSize(11).TextColor(colMuted)
+		})
+	})
+	hairline(c)
+}
+
+// statusLabel 用大白话描述设备状态，不出现"探测"这类词。
+func (a *app) statusLabel() string {
+	switch a.devState {
+	case DevOnline:
+		return "已连接"
+	case DevOffline:
+		return "连不上"
+	default:
+		if a.detecting || a.probing {
+			return "连接中"
+		}
+		return "未连接"
+	}
+}
+
+func statusColor(s DevState) ui.Color {
+	switch s {
+	case DevOnline:
+		return colOk
+	case DevOffline:
+		return colDanger
+	default:
+		return colFaint
+	}
+}
+
 // ── 左侧：扫描页面区 ──
+
 func (a *app) pagesPanel(c *ui.Context, t *ui.Theme) {
-	ui.Column(c).Grow(1).Padding(14).Gap(10).Justify(ui.Start).Children(func() {
-		ui.Row(c).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "扫描页面").FontSize(16).Bold()
-			ui.Text(c, fmt.Sprintf("共 %d 页", len(a.pages))).TextColor(t.TextMuted).Padding(0, 0, 0, 8)
+	ui.Column(c).Grow(1).MinWidth(0).Padding(18, 18, 18, 14).Gap(14).Children(func() {
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "扫描页面").FontSize(19).FontWeight(600).TextColor(colInk)
+			ui.Row(c).Grow(1)
+			countBadge(c, len(a.pages))
 		})
 
 		if len(a.pages) == 0 {
-			ui.Column(c).Grow(1).Center().Gap(8).Children(func() {
-				ui.Text(c, "还没有扫描的页面").TextColor(t.TextMuted)
-				ui.Text(c, "放好纸，点右侧「扫描」").TextColor(t.TextMuted).FontSize(13)
-			})
-		} else {
-			ui.GridView(c, &a.pageGrid, len(a.pages), 130, 180, func(i int) {
-				a.pageCell(c, t, i)
-			}).Grow(1).Gap(10)
-			ui.Text(c, "拖动排序 · 双击放大").TextColor(t.TextMuted).FontSize(12)
+			a.emptyState(c, t)
+			return
 		}
+
+		ui.GridView(c, &a.pageGrid, len(a.pages), 200, 280, func(i int) {
+			a.pageCell(c, t, i)
+		}).Grow(1)
+
+		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, icoGrip).FontSize(12).TextColor(colFaint)
+			ui.Text(c, "点一下看大图 · 拖动可排序").FontSize(11).TextColor(colMuted)
+		})
 	})
 }
 
-// pageCell 一张缩略图卡片
+// emptyState 没有任何页面时的空态：微信式的大留白 + 图标 + 一句下一步。
+func (a *app) emptyState(c *ui.Context, t *ui.Theme) {
+	ui.Column(c).Grow(1).Center().Children(func() {
+		halo := ui.Row(c).Size(64, 64).Radius(20).Background(colAccentSoft).Center()
+		halo.Children(func() {
+			ui.Icon(c, icoScan).FontSize(27).TextColor(colAccent)
+		})
+		ui.Text(c, "还没有扫描的页面").FontSize(15).FontWeight(500).TextColor(colInk).
+			Margin(18, 0, 0, 0)
+		ui.Text(c, "把纸放好，点右边的「扫描」").FontSize(12.5).TextColor(colMuted).
+			Margin(7, 0, 0, 0)
+	})
+}
+
+// pageCell 一张缩略图卡片。
 func (a *app) pageCell(c *ui.Context, t *ui.Theme, i int) {
 	p := &a.pages[i]
 	// 不在这里 .Drag()：GridView 的 Reorder 已在格子外层挂了拖拽源，
 	// 内层再挂一个会把按下事件抢走，拖拽排序就废了。
-	cell := ui.Column(c.Key(p.ID)).Gap(4)
-	cell.Children(func() {
-		ui.Image(c, p.thumb()).Size(120, 140).Fit(ui.Contain).
-			Border(1, t.Border).Radius(4).Background(ui.RGB(250, 250, 250))
-		ui.Row(c).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, itoa(i+1)).FontSize(12).TextColor(t.TextMuted)
-			ui.Row(c).Grow(1)
-			// 导出此页（旧版沿用的 ↓ 入口；openExport(i) 只导这一页）
-			if ui.Button(c, "↓").Tooltip("导出此页").Clicked() {
-				a.openExport(i)
+	card := ui.Column(c).Key(p.ID).Fill().
+		Background(colPanel).Border(1, colLine).Radius(8).Clip().
+		Transition(ui.ElementTransition{Duration: 140 * time.Millisecond, Colors: true})
+	hovered := card.Hovered()
+	if hovered {
+		card.Border(1, colAccentLine).Shadow(0, 4, 14, 0, shadowCard)
+	}
+	card.Children(func() {
+		frame := ui.Column(c).Grow(1).Background(colPanelSoft).Padding(9).Center()
+		frame.Children(func() {
+			ui.Image(c, p.thumb()).Fill().Fit(ui.Contain).Radius(2)
+			if hovered {
+				ui.Row(c).Absolute().Left(0).Right(0).Bottom(8).Justify(ui.Center).PassThrough().Children(func() {
+					ui.Row(c).Gap(5).AlignItems(ui.Center).Padding(5, 11, 5, 11).Radius(999).
+						Background(ui.RGBA(0, 0, 0, 0.55)).Children(func() {
+						ui.Icon(c, icoEye).FontSize(11).TextColor(ui.RGB(255, 255, 255))
+						ui.Text(c, "点击看大图").FontSize(10.5).TextColor(ui.RGB(255, 255, 255))
+					})
+				})
 			}
-			if ui.Button(c, "↻").Tooltip("旋转").Clicked() {
+		})
+		ui.Row(c).Absolute().Left(8).Top(8).Padding(2, 6, 2, 6).Radius(4).
+			Background(ui.RGBA(0, 0, 0, 0.46)).Children(func() {
+			ui.Text(c, padPage(i+1)).FontSize(9.5).FontWeight(600).
+				TextColor(ui.RGB(255, 255, 255))
+		})
+		hairline(c)
+		ui.Row(c).Height(44).Padding(0, 7, 0, 8).AlignItems(ui.Center).Gap(2).Children(func() {
+			ui.Icon(c, icoGrip).FontSize(12).TextColor(colFaint).Tooltip("按住拖动排序")
+			ui.Row(c).Grow(1)
+			if cardButton(c, icoEye, "查看").Clicked() {
+				a.openLightbox(i)
+			}
+			if iconButton(c, icoRotate, "旋转 90°", 30).Clicked() {
 				a.rotatePage(p.ID)
 			}
-			if ui.Button(c, "✕").Tooltip("删除").Clicked() {
+			if iconButton(c, icoDownload, "导出此页", 30).Clicked() {
+				a.openExport(i)
+			}
+			ui.Row(c).Width(1).Height(16).Background(colLineSoft).Margin(2, 0, 2, 0)
+			if dangerIconButton(c, icoTrash, "删除此页", 30).Clicked() {
 				a.deletePage(p.ID)
 			}
 		})
 	})
-	// 双击整张卡片放大（放在卡片上，Image 本身不接收双击）
-	if cell.DoubleClicked() {
+	// 单击或双击都能看大图；按钮会先消耗自己的点击，不会误触。
+	if card.Clicked() || card.DoubleClicked() {
 		a.openLightbox(i)
 	}
 }
 
+func padPage(n int) string { return fmt.Sprintf("%02d", n) }
+
 // ── 右侧：操作区 ──
+
 func (a *app) settingsPanel(c *ui.Context, t *ui.Theme) {
-	dev := a.current()
-	ui.Column(c).Width(300).Padding(14).Gap(10).Justify(ui.Start).Children(func() {
-		// 纸张大小
-		a.fieldLabel(c, "纸张大小", dev != nil && a.sizeSelectable(dev))
-		ui.RadioGroup(c, func() {
-			a.sizeRadio(c, dev, SizeA4)
-			a.sizeRadio(c, dev, SizeA5)
-			a.sizeRadio(c, dev, SizeLetter)
-		})
+	ui.Column(c).Width(railWidth).Padding(0, 18, 18, 18).Children(func() {
+		card := ui.Column(c).Fill().Background(colPanel).Border(1, colLine).Radius(12).
+			Clip().Shadow(0, 1, 6, 0, shadowSoft)
+		card.Children(func() {
+			ui.Column(c).Padding(18, 18, 12, 18).Children(func() {
+				ui.Text(c, "扫描设置").FontSize(15).FontWeight(500).TextColor(colInk)
+			})
 
-		// 清晰度：设备支持多少档就列多少档
-		dpis := dpiChoices(dev)
-		a.fieldLabel(c, "清晰度", len(dpis) <= 1)
-		curDPI := a.dpi
-		if !containsInt(dpis, curDPI) {
-			curDPI = dpis[0]
-		}
-		curDPIName := dpiLabel(curDPI)
-		dpiNames := make([]string, len(dpis))
-		for i, v := range dpis {
-			dpiNames[i] = dpiLabel(v)
-		}
-		if ui.Select(c, &curDPIName, dpiNames).FillWidth().Changed() {
-			for i, name := range dpiNames {
-				if name == curDPIName {
-					a.dpi = dpis[i]
-					break
+			ui.Scroll(c).Grow(1).Padding(18, 18, 10, 18).Gap(15).Children(func() {
+				field := func(build func()) {
+					ui.Column(c).Gap(7).Children(build)
 				}
-			}
-		}
-		ui.Text(c, "数字越大越清晰，扫描也越慢。").FontSize(12).TextColor(t.TextMuted)
+				field(func() { a.sizeField(c) })
+				field(func() { a.dpiField(c) })
+				field(func() { a.intentField(c) })
+				field(func() { a.colorField(c) })
+				field(func() { a.sourceField(c) })
+			})
 
-		// 用途（eSCL Intent）：设备支持哪些就列哪些
-		intents := intentChoices(dev)
-		a.fieldLabel(c, "用途", len(intents) <= 1)
-		curIntent := a.intent
-		if !containsString(intents, curIntent) {
-			curIntent = intents[0]
-		}
-		curIntentName := intentLabel(curIntent)
-		intentNames := make([]string, len(intents))
-		for i, v := range intents {
-			intentNames[i] = intentLabel(v)
-		}
-		if ui.Select(c, &curIntentName, intentNames).FillWidth().Changed() {
-			for i, name := range intentNames {
-				if name == curIntentName {
-					a.intent = intents[i]
-					break
-				}
-			}
-		}
-		ui.Text(c, "按内容选，拿不准就用「文档」：图文混排选「图文混排」，照片选「照片」，只想快速看效果选「快速预览」。").FontSize(12).TextColor(t.TextMuted)
+			hairline(c)
 
-		// 色彩
-		a.fieldLabel(c, "色彩", false)
-		ui.RadioGroup(c, func() {
-			ui.Radio(c, &a.color, ColorColor, "彩色").Disabled(dev != nil && !dev.colorOK(ColorColor))
-			ui.Radio(c, &a.color, ColorGray, "灰度").Disabled(dev != nil && !dev.colorOK(ColorGray))
-			ui.Radio(c, &a.color, ColorBW, "黑白").Disabled(dev != nil && !dev.colorOK(ColorBW))
+			ui.Column(c).Padding(12, 18, 16, 18).Gap(10).Children(func() {
+				a.scanButton(c, t)
+				a.scanFeedback(c)
+				ui.Row(c).Gap(8).Children(func() {
+					a.clearLink(c)
+					a.exportButton(c)
+				})
+			})
 		})
-
-		// 放纸方式
-		a.fieldLabel(c, "放纸方式", dev != nil && !dev.Feeder)
-		ui.RadioGroup(c, func() {
-			ui.Radio(c, &a.feeder, false, "玻璃板").Tooltip("掀开盖子，把纸平放在玻璃板上，一次一张")
-			ui.Radio(c, &a.feeder, true, "进纸口").Tooltip("整叠纸放进进纸口，自动一张张扫").
-				Disabled(dev == nil || !dev.Feeder)
-		})
-
-		ui.Row(c).Height(1).Background(t.Border)
-
-		// 扫描按钮
-		scanLabel := "扫　描"
-		if a.scanning {
-			scanLabel = "扫描中 …"
-		}
-		if a.probing {
-			scanLabel = "连接设备 …"
-		}
-		if ui.PrimaryButton(c, scanLabel).FillWidth().
-			Disabled(a.scanning || a.probing || a.devState != DevOnline).Clicked() {
-			a.startScan()
-		}
-		if a.devState == DevOffline && !a.probing {
-			ui.Text(c, "这台连不上，可能已脱机——换一台，或点 ⟳ 重新检测").FontSize(12).TextColor(t.Danger)
-		}
-		if a.scanStatus != "" {
-			ui.Text(c, a.scanStatus).FontSize(12).TextColor(t.TextMuted)
-		}
-
-		// 清空页面
-		if ui.Button(c, "清空页面").FillWidth().Disabled(len(a.pages) == 0 || a.scanning).Clicked() {
-			a.dlg = DlgClearConfirm
-		}
-
-		// 导出
-		if ui.PrimaryButton(c, "导　出").FillWidth().Disabled(len(a.pages) == 0 || a.scanning).Clicked() {
-			a.openExport(-1)
-		}
 	})
-	ui.Row(c).Width(1).Background(t.Border)
 }
 
-func (a *app) fieldLabel(c *ui.Context, name string, fixed bool) {
-	label := name
-	if fixed {
-		label += "（固定）"
+func (a *app) sizeField(c *ui.Context) {
+	dev := a.current()
+	fixed := dev != nil && a.sizeSelectable(dev)
+	sectionLabel(c, "纸张大小", fixed)
+	enabled := []bool{true, true, true}
+	if dev != nil {
+		enabled = []bool{dev.sizeOK(SizeA4), dev.sizeOK(SizeA5), dev.sizeOK(SizeLetter)}
 	}
-	ui.Text(c, label).FontSize(13).TextColor(c.Theme().TextMuted)
+	cur := int(a.size)
+	if segmented(c, &cur, []string{"A4", "A5", "Letter"}, enabled) {
+		a.size = PaperSize(cur)
+	}
 }
 
-func (a *app) sizeRadio(c *ui.Context, dev *DeviceInfo, s PaperSize) {
-	ui.Radio(c, &a.size, s, s.label()).Disabled(dev != nil && !dev.sizeOK(s))
-}
-
-// sizeSelectable 只有一种纸型可选时才置灰标"固定"（定稿 §三-5）
+// sizeSelectable 只有一种纸型可选时才标"固定"。
 func (a *app) sizeSelectable(dev *DeviceInfo) bool {
 	if dev == nil {
 		return false
@@ -206,6 +240,30 @@ func (a *app) sizeSelectable(dev *DeviceInfo) bool {
 	return n == 1
 }
 
+func (a *app) dpiField(c *ui.Context) {
+	dev := a.current()
+	dpis := dpiChoices(dev)
+	sectionLabel(c, "清晰度", len(dpis) <= 1)
+	curDPI := a.dpi
+	if !containsInt(dpis, curDPI) {
+		curDPI = dpis[0]
+	}
+	curName := dpiLabel(curDPI)
+	names := make([]string, len(dpis))
+	for i, v := range dpis {
+		names[i] = dpiLabel(v)
+	}
+	if ui.Select(c, &curName, names).FillWidth().Height(38).Radius(9).Changed() {
+		for i, name := range names {
+			if name == curName {
+				a.dpi = dpis[i]
+				break
+			}
+		}
+	}
+	caption(c, "数字越大越清楚，扫得也越慢。")
+}
+
 func dpiLabel(v int) string {
 	if v == 300 {
 		return "300 dpi（推荐）"
@@ -213,7 +271,7 @@ func dpiLabel(v int) string {
 	return itoa(v) + " dpi"
 }
 
-// intentLabel eSCL Intent → 界面中文；设备偶尔上报非标准值时原样显示。
+// intentLabels 把 eSCL Intent 翻成界面中文；非标准值原样显示。
 var intentLabels = map[string]string{
 	"Document":       "文档（推荐）",
 	"TextAndGraphic": "图文混排",
@@ -230,19 +288,159 @@ func intentLabel(v string) string {
 	return v
 }
 
-// ── 底部状态栏 ──
-func (a *app) statusBar(c *ui.Context, t *ui.Theme) {
-	ui.Row(c).Height(1).Background(t.Border)
-	ui.Row(c).Height(36).Padding(0, 12, 0, 12).AlignItems(ui.Center).Gap(8).Children(func() {
-		dot := ui.Text(c, "●").FontSize(12)
-		switch a.devState {
-		case DevOnline:
-			dot.TextColor(ui.RGB(34, 180, 90))
-		case DevUnknown:
-			dot.TextColor(t.TextMuted) // 未探测：不冒充在线也不吓人
-		default:
-			dot.TextColor(t.Danger)
+func (a *app) intentField(c *ui.Context) {
+	dev := a.current()
+	intents := intentChoices(dev)
+	sectionLabel(c, "扫描内容", len(intents) <= 1)
+	cur := a.intent
+	if !containsString(intents, cur) {
+		cur = intents[0]
+	}
+	curName := intentLabel(cur)
+	names := make([]string, len(intents))
+	for i, v := range intents {
+		names[i] = intentLabel(v)
+	}
+	if ui.Select(c, &curName, names).FillWidth().Height(38).Radius(9).Changed() {
+		for i, name := range names {
+			if name == curName {
+				a.intent = intents[i]
+				break
+			}
 		}
+	}
+}
+
+func (a *app) colorField(c *ui.Context) {
+	dev := a.current()
+	enabled := []bool{true, true, true}
+	if dev != nil {
+		enabled = []bool{dev.colorOK(ColorColor), dev.colorOK(ColorGray), dev.colorOK(ColorBW)}
+	}
+	sectionLabel(c, "色彩", false)
+	cur := int(a.color)
+	if segmented(c, &cur, []string{"彩色", "灰度", "黑白"}, enabled) {
+		a.color = ColorMode(cur)
+	}
+}
+
+func (a *app) sourceField(c *ui.Context) {
+	dev := a.current()
+	fixed := dev != nil && !dev.Feeder
+	sectionLabel(c, "放纸方式", fixed)
+	enabled := []bool{true, dev != nil && dev.Feeder}
+	cur := 0
+	if a.feeder {
+		cur = 1
+	}
+	if segmented(c, &cur, []string{"玻璃板", "进纸口"}, enabled) {
+		a.feeder = cur == 1
+	}
+	if a.feeder {
+		caption(c, "整叠纸放进进纸口，自动一张张扫。")
+	} else {
+		caption(c, "把纸平放在玻璃板上，一次一张。")
+	}
+}
+
+// scanButton 主操作：实心 accent、带图标，忙碌时换成转圈的指示。
+func (a *app) scanButton(c *ui.Context, t *ui.Theme) {
+	off := a.devState != DevOnline
+	busy := a.scanning || a.probing
+	disabled := off || busy
+	label := "扫　描"
+	switch {
+	case a.probing:
+		label = "连接设备…"
+	case a.scanning:
+		label = "扫描中…"
+	}
+
+	b := ui.ButtonBase(c).FillWidth().Height(44).Radius(8).Disabled(disabled).
+		Transition(ui.ElementTransition{Duration: 140 * time.Millisecond, Colors: true})
+	fg := ui.RGB(255, 255, 255)
+	switch {
+	case disabled:
+		b.Background(colLineSoft)
+		fg = colFaint
+	case b.Pressed():
+		b.Background(colAccentPress)
+	case b.Hovered():
+		b.Background(colAccentHover)
+	default:
+		b.Background(colAccent)
+	}
+	if !disabled {
+		b.Shadow(0, 3, 10, 0, shadowAccent)
+	}
+	b.Children(func() {
+		ui.Row(c).Gap(9).AlignItems(ui.Center).Children(func() {
+			if busy {
+				ui.Spinner(c).FontSize(12.5).TextColor(fg)
+			} else {
+				ui.Icon(c, icoScan).FontSize(16).TextColor(fg)
+			}
+			ui.Text(c, label).FontSize(14).FontWeight(600).TextColor(fg).LetterSpacing(1.1)
+		})
+	})
+	if b.Clicked() {
+		a.startScan()
+	}
+}
+
+// scanFeedback 扫描状态 / 离线提示：只在有事要说时占位。
+func (a *app) scanFeedback(c *ui.Context) {
+	switch {
+	case a.devState == DevOffline && !a.probing:
+		notice(c, icoAlert, "这台打印机连不上，换一台试试。", colDanger, colDangerSoft)
+	case !a.scanning && a.scanStatus != "":
+		ui.Row(c).FillWidth().Justify(ui.Center).Children(func() {
+			ui.Text(c, a.scanStatus).FontSize(11.5).TextColor(colMuted).TextAlign(ui.Center)
+		})
+	}
+}
+
+func (a *app) clearLink(c *ui.Context) {
+	disabled := len(a.pages) == 0 || a.scanning
+	b := ui.ButtonBase(c).Grow(1).Height(38).Radius(8).Disabled(disabled).
+		Transition(ui.ElementTransition{Duration: 120 * time.Millisecond, Colors: true})
+	fg := colMuted
+	if disabled {
+		fg = colFaint
+	} else if b.Hovered() {
+		b.Background(colPanelHover)
+		fg = colInk
+	}
+	b.Children(func() {
+		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, icoTrash).FontSize(13).TextColor(fg)
+			ui.Text(c, "清空页面").FontSize(12).TextColor(fg)
+		})
+	})
+	if b.Clicked() {
+		a.dlg = DlgClearConfirm
+	}
+}
+
+func (a *app) exportButton(c *ui.Context) {
+	enabled := len(a.pages) > 0 && !a.scanning
+	b := styledButton(c, "导出", icoDownload, toneOutline, !enabled).Grow(1).Height(38)
+	b.Tooltip("PDF 或 JPG，导出全部页面")
+	if b.Clicked() {
+		a.openExport(-1)
+	}
+}
+
+// ── 底部状态栏 ──
+
+func (a *app) statusBar(c *ui.Context, t *ui.Theme) {
+	hairline(c)
+	ui.Row(c).Height(statusBarHeight).FillWidth().Padding(0, 18, 0, 18).
+		Background(colPanel).AlignItems(ui.Center).Gap(10).Children(func() {
+		dc := statusColor(a.devState)
+		statusDot(c, dc)
+		ui.Text(c, a.statusLabel()).FontSize(11.5).FontWeight(500).TextColor(colMuted)
+
 		if len(a.devices) > 0 {
 			// 显示格式固定为「设备名 (IPv4)」
 			names := make([]string, len(a.devices))
@@ -257,7 +455,7 @@ func (a *app) statusBar(c *ui.Context, t *ui.Theme) {
 			// 当前值也取自 names——收起状态下只显示这一项，
 			// 脱机标注不能只写给展开的列表看
 			cur := names[a.devSel]
-			if ui.Select(c, &cur, names).Width(320).Changed() {
+			if ui.Select(c, &cur, names).Width(330).Height(34).Radius(8).Changed() {
 				for i, n := range names {
 					if n == cur {
 						a.devSel = i
@@ -268,18 +466,38 @@ func (a *app) statusBar(c *ui.Context, t *ui.Theme) {
 				}
 			}
 		} else {
-			ui.Text(c, "未检测到设备").TextColor(t.TextMuted)
+			ui.Text(c, "还没找到打印机").FontSize(12).TextColor(colMuted)
 		}
-		if ui.Button(c, "⟳").Disabled(a.detecting).Clicked() {
+
+		btn := ui.ButtonBase(c).Height(32).Padding(0, 11, 0, 11).Radius(7).Disabled(a.detecting).
+			Tooltip("重新找打印机").Transition(ui.ElementTransition{Duration: 120 * time.Millisecond, Colors: true})
+		if btn.Hovered() {
+			btn.Background(colPanelHover)
+		}
+		spin := a.detecting || a.probing
+		btn.Children(func() {
+			ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+				ic := ui.Icon(c, icoRefresh).FontSize(13).TextColor(colMuted)
+				if spin {
+					ic.Rotate(ic.Loop("spin", 900*time.Millisecond, ui.Linear) * 360)
+				}
+				ui.Text(c, "刷新").FontSize(11.5).TextColor(colMuted)
+			})
+		})
+		if btn.Clicked() {
 			a.recheckAll()
 		}
+
+		ui.Row(c).Grow(1)
 		if a.hint != "" {
-			ui.Text(c, a.hint).FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, a.hint).FontSize(11.5).TextColor(colMuted).
+				TextAlign(ui.End).MaxWidth(430).SingleLine()
 		}
 	})
 }
 
 // ── 弹层（页面内弹窗 + 灯箱）──
+
 func (a *app) overlays(c *ui.Context, t *ui.Theme) {
 	// 灯箱
 	if a.lightbox != nil {
@@ -308,19 +526,28 @@ func (a *app) overlays(c *ui.Context, t *ui.Theme) {
 	}
 }
 
-// confirmDialog 通用确认弹窗
+// confirmDialog 通用确认弹窗（页面内，不用系统弹窗）
 func (a *app) confirmDialog(c *ui.Context, t *ui.Theme, title, detail, okLabel string, onOK func()) {
 	open := a.dlg != DlgNone
 	ui.Modal(c, &open, func() {
-		ui.Column(c).Width(380).Padding(20).Gap(14).Background(t.Background).
-			Radius(10).Border(1, t.Border).Children(func() {
-			ui.Text(c, title).FontSize(16).Bold()
-			ui.Text(c, detail).TextColor(t.TextMuted)
-			ui.Row(c).Gap(10).Justify(ui.End).Children(func() {
-				if ui.Button(c, "取消").Clicked() {
+		card := ui.Column(c).Width(404).Background(colPanel).Border(1, colLine).
+			Radius(18).Clip().Shadow(0, 28, 70, 0, shadowStrong)
+		card.Children(func() {
+			ui.Row(c).Padding(22, 24, 0, 24).Gap(13).AlignItems(ui.Start).Children(func() {
+				badge := ui.Row(c).Size(40, 40).Radius(12).Background(colDangerSoft).Center().Shrink(0)
+				badge.Children(func() {
+					ui.Icon(c, icoAlert).FontSize(19).TextColor(colDanger)
+				})
+				ui.Column(c).Gap(6).Children(func() {
+					ui.Text(c, title).FontSize(15.5).FontWeight(600).TextColor(colInk)
+					ui.Text(c, detail).FontSize(12.5).TextColor(colMuted).LineHeight(1.55)
+				})
+			})
+			ui.Row(c).Padding(20, 24, 20, 24).Justify(ui.End).Gap(9).Children(func() {
+				if styledButton(c, "取消", nil, toneGhost, false).Height(38).Padding(0, 18, 0, 18).Clicked() {
 					a.dlg = DlgNone
 				}
-				if ui.PrimaryButton(c, okLabel).Clicked() {
+				if styledButton(c, okLabel, nil, toneDanger, false).Height(38).Padding(0, 20, 0, 20).Clicked() {
 					onOK()
 				}
 			})
@@ -332,73 +559,187 @@ func (a *app) confirmDialog(c *ui.Context, t *ui.Theme, title, detail, okLabel s
 }
 
 // ── 灯箱（双击放大）──
+
 func (a *app) lightboxOverlay(c *ui.Context, t *ui.Theme) {
 	lb := a.lightbox
+	white := func(a float32) ui.Color { return ui.RGBA(255, 255, 255, a) }
+	// 灯箱只盖内容区：上面留出标题栏，系统的窗口按钮和拖动区域照常可用，
+	// 也不会出现“点灯箱按钮却点到最小化/关闭”的情况。
 	ui.Overlay(c, func() {
-		// 背景层直接用 Column 撑满：Absolute 四边贴 0 就能定尺寸，
-		// 不必再套一层 Fill()（percent 尺寸在绝对定位父级里量不出高度）。
-		back := ui.Column(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
-			Background(ui.RGBA(0, 0, 0, 0.82)).Modal()
+		back := ui.Column(c).Absolute().Left(0).Top(titleBarHeight).Right(0).Bottom(0).
+			Background(ui.RGBA(9, 17, 22, 0.97)).Modal()
+
 		back.Children(func() {
-			// 顶部栏
-			ui.Row(c).Padding(10).AlignItems(ui.Center).Gap(10).Children(func() {
-				ui.Text(c, fmt.Sprintf("第 %d 页 / 共 %d 页", lb.Index+1, len(a.pages))).
-					TextColor(ui.RGB(255, 255, 255))
+			// 顶栏：页码在左，操作在右，关闭永远在最右边。
+			ui.Row(c).Height(64).Padding(0, 20, 0, 20).
+				AlignItems(ui.Center).Gap(8).Children(func() {
+				ui.Text(c, fmt.Sprintf("第 %d 页", lb.Index+1)).
+					FontSize(15).FontWeight(600).TextColor(white(0.95))
+				ui.Text(c, fmt.Sprintf("共 %d 页", len(a.pages))).
+					FontSize(12).TextColor(white(0.5)).Margin(2, 6, 0, 0)
+
 				ui.Row(c).Grow(1)
-				if ui.Button(c, "↓ 导出此页").Clicked() {
-					a.openExport(lb.Index)
+
+				if lb.ConfirmDelete {
+					ui.Text(c, "删除这一页？").FontSize(12.5).TextColor(white(0.72))
+					if glassButton(c, "取消", nil, false).Clicked() {
+						lb.ConfirmDelete = false
+					}
+					if glassDangerButton(c, "删除", icoTrash, false).Clicked() {
+						lb.ConfirmDelete = false
+						a.deletePage(a.pages[lb.Index].ID)
+						return
+					}
+				} else {
+					if glassButton(c, "旋转", icoRotate, false).Clicked() {
+						a.rotatePage(a.pages[lb.Index].ID)
+					}
+					if glassButton(c, "导出此页", icoDownload, false).Clicked() {
+						a.openExport(lb.Index)
+					}
+					if glassButton(c, "删除此页", icoTrash, false).Clicked() {
+						lb.ConfirmDelete = true
+					}
 				}
-				if ui.Button(c, "↻ 旋转").Clicked() {
-					a.rotatePage(a.pages[lb.Index].ID)
+
+				close := ui.ButtonBase(c).Size(38, 38).Radius(19).
+					Background(ui.RGBA(255, 255, 255, 0.1)).Tooltip("关闭（Esc）").
+					Transition(ui.ElementTransition{Duration: 120 * time.Millisecond, Colors: true})
+				if close.Hovered() {
+					close.Background(ui.RGBA(255, 255, 255, 0.2))
 				}
-				if ui.Button(c, "✕ 关闭").Clicked() {
+				close.Children(func() {
+					ui.Icon(c, icoClose).FontSize(16).TextColor(white(0.92))
+				})
+				if close.Clicked() {
 					a.closeLightbox()
 				}
 			})
-			// 大图区
-			// 图片行自己 Clicked() 一下（忽略结果）：把它标成 interactive，
-			// 点大图才不会落到遮罩层上（遮罩的 Clicked 关灯箱）。
-			imgRow := ui.Row(c).Grow(1).Center()
+
+			// 大图区。Fill + Contain 把几千像素的原图压进窗口，放大后再用偏移查看。
+			imgRow := ui.Row(c).Grow(1).MinHeight(0).Center().Padding(8, 44, 8, 44).Clip()
 			imgRow.Children(func() {
 				if lb.Full != nil {
-					// Fill 而不是 Grow：原图是 300dpi 全尺寸（几千 DIP），
-					// Grow 只会放大不会缩小，得用 Fill 把框压到父级大小，
-					// 再由 Contain 等比缩进去。
-					img := ui.Image(c, lb.Full).Fill().Fit(ui.Contain)
-					if lb.Zoom > 1.0 {
-						img.Scale(lb.Zoom, lb.Zoom)
+					img := ui.Image(c, lb.Full).Fill().Fit(ui.Contain).Radius(3).
+						Shadow(0, 24, 60, 0, ui.RGBA(0, 0, 0, 0.5))
+					if lb.Zoom > 1.0 || lb.PanX != 0 || lb.PanY != 0 {
+						img.Translate(lb.PanX, lb.PanY).Scale(lb.Zoom, lb.Zoom)
 					}
+					// 事件坐标相对灯箱层，图片的 Bounds 是窗口坐标，纵向扣掉标题栏。
+					r := img.Bounds()
+					r.Y -= titleBarHeight
+					lb.img = r
 				} else {
-					ui.Text(c, "正在加载 …").TextColor(ui.RGB(200, 200, 200))
+					ui.Column(c).Gap(10).Center().Children(func() {
+						ui.Spinner(c).FontSize(18).TextColor(white(0.7))
+						ui.Text(c, "正在打开 …").FontSize(12).TextColor(white(0.55))
+					})
 				}
 			})
-			imgRow.Clicked()
-			// 滚轮缩放（Ctrl/普通滚轮都缩；向上放大向下缩小）
-			imgRow.HandleInput(func(ev ui.InputEvent) bool {
-				if ev.Kind == ui.InputScroll {
-					lb.zoomBy(1.0 + ev.DY*-0.001)
-					return true
-				}
-				return false
-			})
-			// 底部翻页
-			ui.Row(c).Padding(10).Justify(ui.Center).Gap(12).Children(func() {
-				if ui.Button(c, "← 上一页").Disabled(lb.Index == 0).Clicked() {
-					a.lightboxNav(-1)
-				}
-				ui.Text(c, fmt.Sprintf("%.0f%% · 滚轮缩放", lb.Zoom*100)).TextColor(ui.RGB(160, 160, 160)).FontSize(12)
-				if ui.Button(c, "下一页 →").Disabled(lb.Index+1 >= len(a.pages)).Clicked() {
-					a.lightboxNav(1)
-				}
+
+			// 底栏：中翻页、右缩放，左右等宽保持翻页居中。
+			ui.Row(c).Height(72).Padding(0, 20, 0, 16).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).Width(210)
+
+				ui.Row(c).Grow(1).Justify(ui.Center).Children(func() {
+					nav := ui.Row(c).Gap(2).AlignItems(ui.Center).Padding(4, 4, 4, 4).Radius(12).
+						Background(ui.RGBA(255, 255, 255, 0.08)).
+						Border(1, ui.RGBA(255, 255, 255, 0.12))
+					nav.Children(func() {
+						if navButton(c, "上一页", icoArrowLeft, lb.Index == 0).Clicked() {
+							a.lightboxNav(-1)
+						}
+						ui.Row(c).Width(76).Justify(ui.Center).Children(func() {
+							ui.Text(c, fmt.Sprintf("%d / %d", lb.Index+1, len(a.pages))).
+								FontSize(12.5).FontWeight(500).TextColor(white(0.9))
+						})
+						if navButton(c, "下一页", icoArrowRight, lb.Index+1 >= len(a.pages)).Clicked() {
+							a.lightboxNav(1)
+						}
+					})
+				})
+
+				ui.Row(c).Width(210).Justify(ui.End).AlignItems(ui.Center).Gap(2).Children(func() {
+					if glassIconButton(c, icoMinus, "缩小", 32).Clicked() {
+						lb.zoomBy(1 / 1.3)
+					}
+					pct := ui.ButtonBase(c).Height(32).Padding(0, 8, 0, 8).Radius(7).
+						Tooltip("点一下还原大小")
+					if pct.Hovered() {
+						pct.Background(ui.RGBA(255, 255, 255, 0.12))
+					}
+					pct.Children(func() {
+						ui.Text(c, fmt.Sprintf("%.0f%%", lb.Zoom*100)).
+							FontSize(11.5).TextColor(white(0.72)).SingleLine()
+					})
+					if pct.Clicked() {
+						lb.resetView()
+					}
+					if glassIconButton(c, icoPlus, "放大", 32).Clicked() {
+						lb.zoomBy(1.3)
+					}
+				})
 			})
 		})
-		// 点击遮罩（backdrop 本身，非内部控件/大图）关闭
-		if back.Clicked() {
-			a.closeLightbox()
-		}
-		// 键盘：Esc 关闭，方向键翻页
+
+		// 一个 handler 管整层：滚轮缩放、放大后拖动、点空白关闭。
+		back.HandleInput(func(ev ui.InputEvent) bool {
+			switch ev.Kind {
+			case ui.InputScroll:
+				lb.zoomBy(1 - ev.DY*0.0015)
+				return true
+			case ui.InputPointerDown:
+				if ev.Button != 0 {
+					return false
+				}
+				lb.dragging = true
+				rect := lb.contentRect()
+				lb.dragIn = rect.W > 0 && rect.Contains(ev.X, ev.Y)
+				lb.dragMoved = false
+				lb.dragX, lb.dragY = ev.X, ev.Y
+				lb.panStartX, lb.panStartY = lb.PanX, lb.PanY
+				if lb.dragIn && ev.Clicks >= 2 {
+					lb.resetView()
+					lb.dragIn = false
+				}
+				return true
+			case ui.InputPointerMove:
+				if !lb.dragging {
+					return false
+				}
+				dx, dy := ev.X-lb.dragX, ev.Y-lb.dragY
+				if !lb.dragMoved && dx*dx+dy*dy > 9 {
+					lb.dragMoved = true
+				}
+				if lb.dragIn && lb.Zoom > 1.0 {
+					lb.PanX, lb.PanY = lb.panStartX+dx, lb.panStartY+dy
+					lb.clampPan()
+				}
+				return true
+			case ui.InputPointerUp:
+				if !lb.dragging {
+					return false
+				}
+				lb.dragging = false
+				if lb.ConfirmDelete {
+					if !lb.dragMoved && !lb.dragIn {
+						lb.ConfirmDelete = false
+					}
+				} else if !lb.dragMoved && !lb.dragIn {
+					a.closeLightbox()
+				}
+				return true
+			}
+			return false
+		})
+
+		// 键盘：Esc 关闭/取消删除，方向键翻页
 		if back.OverlayShortcut(0, ui.KeyEscape) {
-			a.closeLightbox()
+			if lb.ConfirmDelete {
+				lb.ConfirmDelete = false
+			} else {
+				a.closeLightbox()
+			}
 		}
 		if back.OverlayShortcut(0, ui.KeyLeft) {
 			a.lightboxNav(-1)

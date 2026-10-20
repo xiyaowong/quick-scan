@@ -23,7 +23,7 @@ const (
 
 // deviceCacheDir 是缓存所在目录。测试里可整体替换。
 var deviceCacheDir = func() string {
-	return filepath.Join(os.TempDir(), "SimpleMFPScan")
+	return filepath.Join(os.TempDir(), "sscan")
 }
 
 type deviceCacheData struct {

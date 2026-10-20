@@ -1,9 +1,6 @@
-// SimpleMFPScan —— Windows 桌面扫描工具。
-// 对照 docs/ui-mockup.html（布局）与 docs/设计定稿.md（交互语义）。
-//
-// 单进程：mygo 原生 UI + eSCL 客户端（escl.go）+ mDNS 发现（discovery.go）。
-// 扫描全程走局域网 HTTP，不需要厂商驱动、不需要子进程。
-// OCR 模型内嵌在 exe 里，启动时释放到 %TEMP%\SimpleMFPScan_<pid>\（退出即清）。
+// simple-scan —— Windows 桌面扫描工具。
+// mygo 原生 UI + eSCL 客户端 + mDNS 发现，扫描走局域网 HTTP。
+// OCR 模型内嵌在 exe 里，启动时释放到 %TEMP%\sscan_<pid>\，退出即清。
 package main
 
 import (
@@ -52,12 +49,18 @@ func run() (err error) {
 	app := newApp()
 	mygo.App.WhenReady(func() {
 		win = mygo.NewWindow(mygo.WindowOptions{
-			Title:   "惠普MFP打印机扫描工具",
-			Width:   1180,
-			Height:  820,
-			Content: ui.View(app.view),
+			Title:          "simple-scan",
+			Width:          1180,
+			Height:         820,
+			UseContentSize: true,
+			MinWidth:       920,
+			MinHeight:      660,
+			// 自绘标题栏：系统窗口按钮浮在内容右上角，品牌区可拖动窗口。
+			TitleBarStyle:  mygo.TitleBarHidden,
+			TitleBarHeight: titleBarHeight,
+			Content:        ui.View(app.view),
 		})
-		// 关窗拦截：有未导出页面时先弹确认（定稿：退出前确认）
+		// 关窗拦截：有未导出页面时先弹确认
 		win.OnClose(func(e *mygo.CloseEvent) {
 			if app.quitConfirmed || len(app.pages) == 0 {
 				return // 放行（quitConfirmed 由确认对话框置位）

@@ -1,6 +1,6 @@
-# SimpleMFPScan 构建管理（Windows 64 位，Go + mygo 原生 UI）
+# simple-scan 构建管理（Windows 64 位，Go + mygo 原生 UI）
 #
-# 单一产物 SimpleMFPScan.exe：mygo UI + eSCL 客户端 + 内嵌 OCR 模型。
+# 单一产物 sscan.exe：mygo UI + eSCL 客户端 + 内嵌 OCR 模型。
 # 扫描走局域网 eSCL（HTTP），不需要厂商 TWAIN/WIA 驱动，也没有子进程。
 #
 # ── 写配方前必读的两条 just/pwsh 坑 ──────────────────────────────
@@ -43,14 +43,14 @@ ui: icon ocr
     $env:CGO_ENABLED = '1'; \
     $env:GOARCH = 'amd64'; \
     if (-not $env:CC) { $env:CC = if (Get-Command clang -ErrorAction SilentlyContinue) { (Get-Command clang).Source } else { 'D:\Scoop\apps\llvm\current\bin\clang.exe' } }; \
-    go build -trimpath -tags mygo_noinspector -ldflags '-s -w' -o SimpleMFPScan.exe .; \
+    go build -trimpath -tags mygo_noinspector -ldflags '-s -w' -o sscan.exe .; \
     if ($LASTEXITCODE -ne 0) { throw '主程序编译失败' }; \
-    Write-Host '[ui] SimpleMFPScan.exe 完成'
+    Write-Host '[ui] sscan.exe 完成'
 
 # 全量构建
 build: ui
     @Write-Host ''
-    @Write-Host '完成：SimpleMFPScan.exe（64 位单文件：含 OCR 模型）'
+    @Write-Host '完成：sscan.exe（64 位单文件：含 OCR 模型）'
 
 # 快速类型检查 + 单测。默认走无 cgo 的 stub 路径（不需要 Rust 库）；
 # `just check 1` 连 OCR 真实现一起 vet，需要先跑 just ocr。
@@ -70,19 +70,19 @@ test:
 
 # 跑主程序（会真的用 mDNS 找设备并连打印机）
 run: ui
-    .\SimpleMFPScan.exe
+    .\sscan.exe
 
-# ── 发布产物（dist\SimpleMFPScan-<版本>-win64.zip，内含单个 exe）──
+# ── 发布产物（dist\simple-scan-<版本>-win64.zip，内含单个 exe）──
 # 版本号直接读 app.rc 的 PRODUCTVERSION，避免和资源里的版本漂移。
 package: build
     $ver = (((Select-String -Path app.rc -Pattern 'PRODUCTVERSION\s+([\d,]+)').Matches[0].Groups[1].Value -split ',')[0..2] -join '.'); \
-    $stage = "dist\SimpleMFPScan-$ver"; \
+    $stage = "dist\simple-scan-$ver"; \
     if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }; \
     New-Item -ItemType Directory -Force $stage | Out-Null; \
-    if (-not (Test-Path SimpleMFPScan.exe)) { throw 'SimpleMFPScan.exe 不存在，先跑 just build' }; \
-    Copy-Item SimpleMFPScan.exe "$stage\SimpleMFPScan.exe"; \
+    if (-not (Test-Path sscan.exe)) { throw 'sscan.exe 不存在，先跑 just build' }; \
+    Copy-Item sscan.exe "$stage\sscan.exe"; \
     if (Test-Path README.md) { Copy-Item README.md $stage }; \
-    $zip = "dist\SimpleMFPScan-$ver-win64.zip"; \
+    $zip = "dist\simple-scan-$ver-win64.zip"; \
     if (Test-Path $zip) { Remove-Item $zip -Force }; \
     Compress-Archive -Path $stage -DestinationPath $zip; \
     Write-Host ''; \
@@ -91,7 +91,7 @@ package: build
 # 清理构建产物
 # 每个目标都先 Test-Path：删不存在的路径会让进程退出码变 1，just 会当成配方失败。
 clean:
-    foreach ($f in 'SimpleMFPScan.exe','rsrc_windows_amd64.syso') { if (Test-Path $f) { Remove-Item -Force $f } }; \
+    foreach ($f in 'sscan.exe','rsrc_windows_amd64.syso') { if (Test-Path $f) { Remove-Item -Force $f } }; \
     foreach ($d in 'ocrbridge\target','dist') { if (Test-Path $d) { Remove-Item -Recurse -Force $d } }; \
     Write-Host '[clean] 完成'
 

@@ -18,7 +18,7 @@
 - 选择器显示格式固定：**`设备名 (IPv4)`**（`DeviceInfo.DisplayName`）。
   明确离线的仍按旧行为在末尾加 `（脱机）`。
 - 发现等待 4 秒（mDNS 广播，几秒足够），同一 IP+端口+路径去重。
-- 启动加速：上次的设备端点与能力缓存在 `%TEMP%\SimpleMFPScan\devices.json`。
+- 启动加速：上次的设备端点与能力缓存在 `%TEMP%\sscan\devices.json`。
   启动先把缓存名单显示出来并立刻探测上次选中的设备，同时后台跑 mDNS；
   发现结果按 `IP:端口/路径` 合并进现有名单，不打断用户选择。
   缓存 30 天过期、最多 32 台；系统清理临时目录时丢掉也不影响正确性。
@@ -62,7 +62,7 @@ ScanSettings 要点：
 
 ## 4. 落盘与显示
 
-- 设备返回的 JPEG/PNG 原样写进 `%TEMP%\SimpleMFPScan_<pid>\pages\`，扩展名随格式。
+- 设备返回的 JPEG/PNG 原样写进 `%TEMP%\sscan_<pid>\pages\`，扩展名随格式。
 - `decodeImage` 按文件头解码 JPEG/PNG/BMP；缩略图、灯箱、旋转、PDF/JPG 导出与旧版一致。
 - 导出与 OCR 都走同一份原图，行为不变。
 

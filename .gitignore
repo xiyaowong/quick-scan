@@ -1,5 +1,6 @@
 # ── 构建产物 ──
-SimpleMFPScan.exe
+sscan.exe
+sscan-ui-test.exe
 # 图标资源对象：由 justfile 的 icon 配方从 app.rc + app.ico 现编（windres），可重建
 rsrc_windows_amd64.syso
 # Rust OCR 桥构建产物：由 justfile 的 ocr 配方编出，可重建

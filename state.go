@@ -1,5 +1,4 @@
-// 主程序状态模型——与 ui-mockup.html 的交互语义一一对应。
-// 零持久化：所有状态只活在本进程内存里（定稿 §三-2）。
+// 主程序状态模型。所有状态只活在本进程内存里。
 package main
 
 import (
@@ -13,7 +12,7 @@ import (
 
 // ── 枚举 ──
 
-// ColorMode 色彩（界面用全人话，定稿 §七）
+// ColorMode 色彩（界面用大白话）
 type ColorMode int
 
 const (
@@ -73,8 +72,7 @@ func (s PaperSize) key() string {
 	}
 }
 
-// DevState 设备状态灯（定稿 §三-3 的两态之上加一个"未探测"）：
-// 探测只发生在用户选定某台之后——没探过的就是 Unknown，不冒充在线。
+// DevState 设备状态：没探测过是 Unknown，不冒充在线。
 type DevState int
 
 const (
@@ -265,7 +263,7 @@ func (p *Page) thumb() *ui.Bitmap {
 
 // ── 对话框与灯箱 ──
 
-// DialogKind 页面内弹窗（不用系统弹窗，定稿 §八-3）
+// DialogKind 页面内的弹窗，不走系统消息框。
 type DialogKind int
 
 const (
@@ -292,21 +290,64 @@ type ExportDone struct {
 	PageCount int
 }
 
-// Lightbox 灯箱（双击放大）
+// Lightbox 灯箱：看大图、翻页、转正、导出。
 type Lightbox struct {
 	Index   int
 	Full    *ui.Bitmap // 当前显示的大图（已按旋转烘焙）
 	Loading bool
 	Zoom    float32 // 1.0 = 适配窗口
-	Dirty   bool    // 需要重新解码/派生
+	PanX    float32 // 放大后拖动查看的偏移
+	PanY    float32
+	Dirty   bool // 需要重新解码/派生
+
+	// 删除是破坏性操作，先在这一页上问一次，不弹整窗对话框。
+	ConfirmDelete bool
+
+	ImgW, ImgH float32 // 原图像素尺寸，用来算 Contain 后真正占的区域
+	img        ui.Rect // 上一帧图片容器的区域（灯箱层坐标）
+	dragging   bool
+	dragIn     bool // 按下时是否落在图片上
+	dragMoved  bool
+	dragX      float32
+	dragY      float32
+	panStartX  float32
+	panStartY  float32
 }
 
-func (lb *Lightbox) resetView() { lb.Zoom = 1.0 }
+func (lb *Lightbox) resetView() {
+	lb.Zoom = 1.0
+	lb.PanX, lb.PanY = 0, 0
+}
+
 func (lb *Lightbox) zoomBy(f float32) {
 	lb.Zoom = clamp(lb.Zoom*f, 1.0, 8.0)
 	if lb.Zoom <= 1.0 {
 		lb.resetView()
+		return
 	}
+	lb.clampPan()
+}
+
+// contentRect 是图片真正画出来的地方。Contain 会在容器里留黑边，
+// 只有点在这块区域里才算点在图上，点黑边应该关灯箱。
+func (lb *Lightbox) contentRect() ui.Rect {
+	box := lb.img
+	if box.W <= 0 || box.H <= 0 || lb.ImgW <= 0 || lb.ImgH <= 0 {
+		return ui.Rect{}
+	}
+	if lb.Zoom > 1 {
+		return box
+	}
+	s := min(box.W/lb.ImgW, box.H/lb.ImgH)
+	w, h := lb.ImgW*s, lb.ImgH*s
+	return ui.Rect{X: box.X + (box.W-w)/2, Y: box.Y + (box.H-h)/2, W: w, H: h}
+}
+
+func (lb *Lightbox) clampPan() {
+	maxX := (lb.Zoom - 1) * lb.img.W / 2
+	maxY := (lb.Zoom - 1) * lb.img.H / 2
+	lb.PanX = clamp(lb.PanX, -maxX, maxX)
+	lb.PanY = clamp(lb.PanY, -maxY, maxY)
 }
 
 // ── 主状态 ──

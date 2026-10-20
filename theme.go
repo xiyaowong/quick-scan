@@ -1,31 +1,72 @@
-// 纯白主题（定稿 §三-1 硬性决策：只有一套浅色主题，不跟随系统深色模式）。
-// 配色对照 docs/ui-mockup.html 的 :root 设计变量：冷灰纸感中性色 + 深青 accent
-// （扫描仪光条的青绿），红章作为文档世界的点睛。
+// 微信风格的浅色主题：浅灰画布、白色卡片，绿色只给主操作与选中态。
+// 界面层统一从这里取色，view.go 不写死色值。
 package main
 
 import "github.com/egoist/mygo/ui"
 
-// lightTheme 以 mygo 内置 LightTheme 为底（保证度量齐全），逐项改成设计稿色值。
+// 设计令牌。
+var (
+	colBg         = ui.Hex("#F5F5F5") // 窗口底：微信的浅灰画布
+	colPanel      = ui.Hex("#FFFFFF") // 内容卡片
+	colPanelSoft  = ui.Hex("#F7F7F7") // 输入框、分段轨道、缩略图底
+	colPanelHover = ui.Hex("#F0F0F0") // 悬停
+	colLine       = ui.Hex("#E7E7E7") // 卡片描边
+	colLineSoft   = ui.Hex("#EFEFEF") // 分隔线
+	colInk        = ui.Hex("#191919") // 主文字
+	colMuted      = ui.Hex("#8C8C8C") // 次要文字
+	colFaint      = ui.Hex("#B2B2B2") // 占位、禁用
+
+	colAccent      = ui.Hex("#07C160") // 微信绿
+	colAccentHover = ui.Hex("#06AD56")
+	colAccentPress = ui.Hex("#059B4C")
+	colAccentSoft  = ui.Hex("#E8F7EE") // 浅绿底
+	colAccentLine  = ui.Hex("#B7E5C9") // 浅绿描边
+
+	colDanger     = ui.Hex("#FA5151")
+	colDangerSoft = ui.Hex("#FFF0F0")
+	colOk         = ui.Hex("#07C160")
+	colOkSoft     = ui.Hex("#E8F7EE")
+	colWarn       = ui.Hex("#FA9D3B")
+
+	shadowSoft   = ui.RGBA(0, 0, 0, 0.04)
+	shadowCard   = ui.RGBA(0, 0, 0, 0.08)
+	shadowStrong = ui.RGBA(0, 0, 0, 0.18)
+	shadowAccent = ui.RGBA(7, 193, 96, 0.22)
+)
+
+// 版式度量。
+const (
+	titleBarHeight  = 46
+	statusBarHeight = 52
+	railWidth       = 348
+)
+
+// lightTheme 以 mygo 内置 LightTheme 为底（保证度量齐全），逐项改成微信风格色值。
 func lightTheme() *ui.Theme {
 	t := ui.LightTheme()
-	// 中性色（mockup: --win/--panel/--panel-2/--line/--line-2/--ink/--mut）
-	t.Background = ui.RGB(244, 246, 247)     // --win  窗口底
-	t.Surface = ui.RGB(255, 255, 255)        // --panel 控件面
-	t.SurfaceHover = ui.RGB(238, 241, 243)   // --panel-2
-	t.SurfacePressed = ui.RGB(228, 233, 236) // panel-2 再压深一点
-	t.Border = ui.RGB(211, 218, 222)         // --line
-	t.Text = ui.RGB(23, 36, 46)              // --ink
-	t.TextMuted = ui.RGB(93, 107, 118)       // --mut
-	// 强调色（mockup: --accent 0c7f8a 深青）
-	t.Accent = ui.RGB(12, 127, 138)
-	t.AccentHover = ui.RGB(10, 106, 115) // --accent-hi
-	t.AccentPressed = ui.RGB(8, 92, 100)
-	t.AccentText = ui.RGB(255, 255, 255) // --accent-ink
-	// 语义色
-	t.Danger = ui.RGB(178, 58, 46)      // --danger
-	t.Success = ui.RGB(47, 158, 79)     // --ok
-	t.Warning = ui.RGB(217, 154, 30)    // --warn
-	t.Selection = ui.RGB(224, 240, 241) // --accent-soft
-	t.Focus = t.Accent
+	t.Background = colBg
+	// 控件默认是浅灰填充的面，和微信的设置项一致；卡片自己用 colPanel 覆盖。
+	t.Surface = colPanelSoft
+	t.SurfaceHover = colPanelHover
+	t.SurfacePressed = ui.Hex("#E9E9E9")
+	t.Border = colLine
+	t.Text = colInk
+	t.TextMuted = colMuted
+	t.Accent = colAccent
+	t.AccentHover = colAccentHover
+	t.AccentPressed = colAccentPress
+	t.AccentText = ui.Hex("#FFFFFF")
+	t.Danger = colDanger
+	t.Success = colOk
+	t.Warning = colWarn
+	t.Selection = ui.RGBA(7, 193, 96, 0.20)
+	t.Focus = ui.RGBA(7, 193, 96, 0.50)
+	t.Inverse = ui.Hex("#1F1F1F")
+	t.InverseText = ui.Hex("#FFFFFF")
+	t.Scrollbar = ui.RGBA(0, 0, 0, 0.18)
+	t.ScrollbarWidth = 7
+	t.Radius = 8
+	t.Spacing = 5
+	t.FontSize = 13.5
 	return t
 }
