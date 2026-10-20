@@ -11,8 +11,6 @@ import (
 	"unicode/utf8"
 )
 
-// Suggest 从一页原图提取文件名候选：解码 → 缩到长边 1600 → 识别 → 清洗排序。
-// 整页识别，正文段落由 markParagraphs 成组剔除；Rust 只返回原始行。
 func Suggest(imgPath string, rot int) ([]string, error) {
 	r, err := SuggestRanking(imgPath, rot)
 	if err != nil {
@@ -21,7 +19,6 @@ func Suggest(imgPath string, rot int) ([]string, error) {
 	return r.names(), nil
 }
 
-// SuggestRanking 同 Suggest，但返回完整的中间结果（调试/调参用）
 func SuggestRanking(imgPath string, rot int) (*ranking, error) {
 	img, err := Decode(imgPath)
 	if err != nil {
@@ -40,7 +37,6 @@ func SuggestRanking(imgPath string, rot int) (*ranking, error) {
 	if err != nil {
 		return nil, err
 	}
-	// 评分用送进去那张图的宽高做归一。
 	b := small.Bounds()
 	return candidateRanking(lines, b.Dx(), b.Dy()), nil
 }
@@ -56,7 +52,6 @@ const (
 	maxNameRunes  = 30 // 单条候选的长度上限（再长不像标题）
 )
 
-// ocrPick 一行进入排序的中间态
 type ocrPick struct {
 	name   string
 	score  float32
@@ -66,7 +61,7 @@ type ocrPick struct {
 	body   bool // 属于正文段落（markParagraphs 判定）
 }
 
-// dropBody 去掉正文段落行；全被去掉时返回空（调用方据此回退）
+// dropBody 去除正文段落行；全被去掉时返回空（调用方据此回退）
 func dropBody(picks []ocrPick) []ocrPick {
 	out := make([]ocrPick, 0, len(picks))
 	for _, p := range picks {
@@ -77,14 +72,12 @@ func dropBody(picks []ocrPick) []ocrPick {
 	return out
 }
 
-// ocrKept 通过硬性淘汰、等待打分的行
 type ocrKept struct {
 	line ocrLine
 	name string
-	body bool // 属于正文段落（同字号同左边界成组折行）
+	body bool // 正文段落
 }
 
-// ranking 是候选生成的中间结果，单独成形是为了能打印出来调参
 type ranking struct {
 	medianH  float32
 	all      []ocrKept // 通过硬性淘汰的行（带 body）
@@ -95,7 +88,6 @@ type ranking struct {
 
 func (r *ranking) names() []string { return r.out }
 
-// candidateRanking 做完整套：中位字号 → 段落判定 → 清洗淘汰 → 打分 → 排序 → 出候选
 func candidateRanking(lines []ocrLine, frameW, frameH int) *ranking {
 	r := &ranking{}
 	if frameW <= 0 || frameH <= 0 || len(lines) == 0 {
@@ -127,7 +119,6 @@ func candidateRanking(lines []ocrLine, frameW, frameH int) *ranking {
 		bodyAt[i] = all[i].body
 	}
 
-	// 清洗 + 硬性淘汰
 	for i, l := range lines {
 		if name, ok := prepareLine(l, frameW, frameH); ok {
 			r.all = append(r.all, ocrKept{line: l, name: name, body: bodyAt[i]})
@@ -137,7 +128,6 @@ func candidateRanking(lines []ocrLine, frameW, frameH int) *ranking {
 		return r
 	}
 
-	// 打分
 	picks := make([]ocrPick, 0, len(r.all))
 	for _, k := range r.all {
 		if k.body {
@@ -288,7 +278,6 @@ func intAbs(v int) int {
 	return v
 }
 
-// joinTitle 把折行的标题段按顺序拼成一条，超长就截断。
 func joinTitle(parts []ocrPick) string {
 	var b strings.Builder
 	prevTop, prevH := float32(-1), float32(0)
@@ -309,15 +298,13 @@ func joinTitle(parts []ocrPick) string {
 	return b.String()
 }
 
-// needsSpaceBetween 拼接处是否需要空格：两边都是汉字就不要
 func needsSpaceBetween(a, b string) bool {
 	ar, _ := utf8.DecodeLastRuneInString(a)
 	br, _ := utf8.DecodeRuneInString(b)
 	return !(isCJK(ar) && isCJK(br))
 }
 
-// prepareLine 清洗 + 硬性淘汰。返回清洗后的候选名，ok=false 表示这行直接不要。
-// 淘汰的都是"无论版面如何都不像标题"的：太短/太长、纯数字、符号噪声、页脚页码。
+// 淘汰无论版面如何都不像标题的行：太短/太长、纯数字、符号噪声、页脚页码。
 func prepareLine(l ocrLine, frameW, frameH int) (string, bool) {
 	name := normalizeOCRText(l.Text)
 	if name == "" || l.Height <= 0 || frameW <= 0 || frameH <= 0 {
@@ -356,7 +343,6 @@ func prepareLine(l ocrLine, frameW, frameH int) (string, bool) {
 	return name, true
 }
 
-// rankLine 给清洗后的行打分；各分项归一到 0..1，权重在表达式里。
 func rankLine(k ocrKept, medianH float32, frameW, frameH int) (ocrPick, bool) {
 	l, name := k.line, k.name
 	field := false
@@ -369,9 +355,7 @@ func rankLine(k ocrKept, medianH float32, frameW, frameH int) (ocrPick, bool) {
 	hScore := clamp01((l.Height/medianH - 1.0) / (1.8 - 1.0))
 	// 位置：越靠上越像标题（权重给低——红头/页眉也在最上面，靠字号压下去）
 	pScore := clamp01(1 - (l.Top/float32(frameH)-0.02)/(0.45-0.02))
-	// 横向铺开程度：标题一般占版心相当宽
 	wScore := clamp01(l.Width / float32(frameW) / 0.55)
-	// 置信度：识别得越准越可信
 	cScore := clamp01((l.Score - 0.60) / (0.95 - 0.60))
 
 	score := 4.0*hScore + 1.5*pScore + 1.0*wScore + 1.0*cScore
@@ -397,7 +381,6 @@ func rankLine(k ocrKept, medianH float32, frameW, frameH int) (ocrPick, bool) {
 	return ocrPick{name: name, score: score, height: l.Height, top: l.Top, width: l.Width, body: k.body}, true
 }
 
-// labelColonIndex 返回第一个中/英文冒号的字符位置，没有返回 -1
 func labelColonIndex(name string) int {
 	for i, r := range []rune(name) {
 		if r == '：' || r == ':' {
@@ -432,7 +415,7 @@ func hasBoilerplate(name string) bool {
 	return false
 }
 
-// normalizeOCRText 清成能当文件名的样子：去非法字符、压空白、去掉汉字间空格、削句末标点。
+// 去非法字符、压空白、去掉汉字间空格、削句末标点。
 func normalizeOCRText(s string) string {
 	var b strings.Builder
 	for _, r := range s {
@@ -510,7 +493,6 @@ func RunOcrTest(imgPath string) {
 	t0 := time.Now()
 	switch mode {
 	case "--ocr-raw":
-		// 原始行：不裁顶部、不过滤，全图识别
 		img, err := Decode(imgPath)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "失败:", err)

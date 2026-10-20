@@ -15,15 +15,13 @@ var (
 	procGetConsoleProcessList = kernel32.NewProc("GetConsoleProcessList")
 )
 
-// DetachIfStandalone 只在"控制台是为本进程临时新建的"时候脱钩。
-// 必须在任何耗时工作之前调用：晚一步用户就会看见控制台闪一下。
+// DetachIfStandalone 必须最早调用，晚一步用户就会看见控制台闪一下。
 func DetachIfStandalone() {
 	if procGetConsoleProcessList.Find() != nil || procFreeConsole.Find() != nil {
 		return
 	}
 	var buf [8]uint32
-	// 返回值 = 挂在这个控制台上的进程数；>len(buf) 表示只写回了一部分，
-	// 那种情况一定是"有很多进程"（终端），不必再问
+	// 返回值 = 控制台上的进程数；超过缓冲区大小说明进程很多，按终端处理。
 	n, _, _ := procGetConsoleProcessList.Call(uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
 	if n > 1 {
 		return // 有父终端：留着控制台，stderr 才有地方去

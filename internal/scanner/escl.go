@@ -1,13 +1,4 @@
-// eSCL（Mopria/AirPrint 扫描协议）客户端——自己实现，不依赖第三方 eSCL 库。
-//
-// 协议只有四个动作，全是 HTTP + XML：
-//
-//	GET  /eSCL/ScannerCapabilities        → 设备能力（色彩/分辨率/纸型/有无进纸口）
-//	POST /eSCL/ScanJobs                   → 建扫描任务，201 + Location 头
-//	GET  /eSCL/ScanJobs/<id>/NextDocument → 取一张（ADF 逐张取，404 = 没了）
-//	DELETE /eSCL/ScanJobs/<id>            → 收尾/取消
-//
-// 只用 IPv4（见 discovery.go）。设备端口与 eSCL 路径来自 mDNS TXT，缺省 80 / "eSCL"。
+// eSCL 客户端。只用 IPv4；端口与路径来自 mDNS TXT，缺省 80 / "eSCL"。
 package scanner
 
 import (
@@ -34,8 +25,7 @@ const (
 	jobTimeout      = 15 * time.Second  // 建任务
 	pageTimeout     = 120 * time.Second // 取一张：600dpi 冷启动也要等
 	defaultVersion  = "2.63"
-	// DefaultIntent 设备没上报用途时的规范默认值。
-	DefaultIntent = "Document"
+	DefaultIntent   = "Document"
 )
 
 // scannerHTTP 直连局域网设备并禁用代理；否则系统代理会把 192.168.x.x 的请求也劫走。
@@ -49,9 +39,6 @@ var scannerHTTP = &http.Client{
 	},
 }
 
-// ── 设备能力 ──
-
-// scannerCapabilities 是 ScannerCapabilities 的解析结果（只取界面用得到的）。
 type scannerCapabilities struct {
 	Version      string
 	MakeAndModel string
@@ -60,7 +47,7 @@ type scannerCapabilities struct {
 	Formats      []string   // 两种输入源的格式并集
 }
 
-// inputCaps 一路输入源的能力。尺寸单位是 1/300 英寸（eSCL 规范）。
+// 尺寸单位 1/300 英寸。
 type inputCaps struct {
 	MinWidth, MaxWidth   int
 	MinHeight, MaxHeight int
@@ -230,7 +217,6 @@ func appendRangeResolutions(dst []float32, rg *axisRangeXML) []float32 {
 	return dst
 }
 
-// colorKey eSCL ColorMode → 界面的色彩键
 func colorKey(mode string) string {
 	switch {
 	case strings.HasPrefix(mode, "BlackAndWhite"):
@@ -296,15 +282,13 @@ const (
 	PaperLetter = "letter"
 )
 
-// paperUnits 纸张尺寸（1/300 英寸，纵向），对应界面的 A4/A5/Letter。
 var paperUnits = map[string][2]int{
 	PaperA4:     {2480, 3508},
 	PaperA5:     {1748, 2480},
 	PaperLetter: {2550, 3300},
 }
 
-// supportsSize 设备最大扫描区域能否放下这张纸（允许横竖两个方向）。
-// Max 缺失 = 没上报 = 不限制。
+// 允许横竖两个方向；Max 缺失 = 不限制。
 func (in *inputCaps) supportsSize(s string) bool {
 	if in == nil || in.MaxWidth <= 0 || in.MaxHeight <= 0 {
 		return true
@@ -357,7 +341,6 @@ func (c *scannerCapabilities) resolutions() []float32 {
 	return out
 }
 
-// intents 两种输入源上报的 Intent 并集，保持设备给出的顺序。
 func (c *scannerCapabilities) intents() []string {
 	var out []string
 	for _, in := range []*inputCaps{c.Platen, c.ADF} {
@@ -368,7 +351,7 @@ func (c *scannerCapabilities) intents() []string {
 	return out
 }
 
-// pickFormat 选一个能解码的图片格式，JPEG > PNG；只报 PDF 时返回空。
+// JPEG > PNG；只报 PDF 时返回空。
 func pickFormat(formats []string) string {
 	for _, want := range []string{"image/jpeg", "image/jpg", "image/png"} {
 		for _, f := range formats {
@@ -389,9 +372,6 @@ func pickFormat(formats []string) string {
 	return ""
 }
 
-// ── 探测 ──
-
-// Probe 读设备能力并写回 DeviceInfo；HTTP 通了就算在线。
 func Probe(ctx context.Context, d *DeviceInfo) error {
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
@@ -420,7 +400,6 @@ func Probe(ctx context.Context, d *DeviceInfo) error {
 	if d.Name == "" && caps.MakeAndModel != "" {
 		d.Name = caps.MakeAndModel
 	}
-	// 能力并集写进 DeviceInfo，界面据此置灰选项
 	d.Colors = nil
 	for _, c := range []string{ColorModeColor, ColorModeGray, ColorModeBW} {
 		if caps.supportsColor(c) {
@@ -439,9 +418,6 @@ func Probe(ctx context.Context, d *DeviceInfo) error {
 	return nil
 }
 
-// ── 扫描 ──
-
-// Options 一次扫描的参数（界面 → eSCL）。
 type Options struct {
 	Color  string // color / gray / bw
 	DPI    int
@@ -450,7 +426,7 @@ type Options struct {
 	Intent string // eSCL Intent；空 = Document
 }
 
-// Scan 建任务 → 逐张取回 → 落盘，返回图片路径；失败时 DELETE 掉任务。
+// 失败时 DELETE 掉任务。
 func Scan(ctx context.Context, d *DeviceInfo, opts Options, dir string) ([]string, error) {
 	if d.caps == nil {
 		if err := Probe(ctx, d); err != nil {

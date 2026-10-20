@@ -1,4 +1,3 @@
-// 导出对话框 + 灯箱图像加载 + 页面操作。
 package ui
 
 import (
@@ -13,7 +12,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// openExport 打开导出对话框；single >= 0 时只导出那一页
 func (a *app) openExport(single int) {
 	a.exportSingle = single
 	a.exportPhase = PhaseIdle
@@ -27,7 +25,6 @@ func (a *app) defaultFilename() string {
 	return "扫描_" + time.Now().Format("20060102_1504")
 }
 
-// exportDialog 导出对话框（页面内，两步：格式 → 文件名 → 系统另存为）
 func (a *app) exportDialog(c *ui.Context, t *ui.Theme) {
 	open := a.dlg == DlgExport
 	ui.Modal(c, &open, func() {
@@ -79,7 +76,6 @@ func (a *app) exportProgressView(c *ui.Context, t *ui.Theme) {
 	})
 }
 
-// exportFormView 格式 + 文件名 + 导出按钮
 func (a *app) exportFormView(c *ui.Context, t *ui.Theme) {
 	sectionLabel(c, "格式", false)
 	cur := 0
@@ -131,7 +127,6 @@ func (a *app) exportFormView(c *ui.Context, t *ui.Theme) {
 	})
 }
 
-// exportDoneView 导出完成态
 func (a *app) exportDoneView(c *ui.Context, t *ui.Theme) {
 	successPanel(c, "已导出", fmt.Sprintf("共 %d 页", a.exportDone.PageCount))
 	if a.exportDone.Display != "" {
@@ -161,7 +156,6 @@ func (a *app) exportDoneView(c *ui.Context, t *ui.Theme) {
 	})
 }
 
-// runExport 系统另存为 → 后台导出
 func (a *app) runExport() {
 	if a.exportPicking {
 		return
@@ -232,7 +226,6 @@ func (a *app) runExport() {
 	}()
 }
 
-// exportTargets 要导出的页（单页或全部）
 func (a *app) exportTargets() []Page {
 	if a.exportSingle >= 0 && a.exportSingle < len(a.pages) {
 		return []Page{a.pages[a.exportSingle]}
@@ -240,13 +233,10 @@ func (a *app) exportTargets() []Page {
 	return a.pages
 }
 
-// ── 页面操作 ──
-
 func (a *app) rotatePage(id uint64) {
 	for i := range a.pages {
 		if a.pages[i].ID == id {
 			a.pages[i].Rot = (a.pages[i].Rot + 90) % 360
-			// 重烘缩略图
 			if full, err := scanner.Decode(a.pages[i].FullPath); err == nil {
 				rot := scanner.Rotate90(full, a.pages[i].Rot)
 				a.pages[i].ThumbRot = thumbnail(rot, 240)
@@ -288,11 +278,8 @@ func (a *app) deletePage(id uint64) {
 			a.requestLightboxImage()
 		}
 	}
-	// 页没了就是没了，不用文字再确认一遍
 	a.scanStatus = ""
 }
-
-// ── 灯箱 ──
 
 func (a *app) openLightbox(index int) {
 	if index >= len(a.pages) {
@@ -304,7 +291,7 @@ func (a *app) openLightbox(index int) {
 
 func (a *app) closeLightbox() { a.lightbox = nil }
 
-// requestLightboxImage 保证灯箱当前页大图已加载（后台解码，26MB 级不能在 UI 线程）
+// 后台解码：26MB 级原图不能在 UI 线程读。
 func (a *app) requestLightboxImage() {
 	lb := a.lightbox
 	if lb == nil || !lb.Dirty || lb.Loading {

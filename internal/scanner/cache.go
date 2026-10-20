@@ -1,4 +1,3 @@
-// 设备缓存：上次发现的端点 + 能力，放 %TEMP%。只用来加速启动，丢了不影响正确性。
 package scanner
 
 import (
@@ -18,7 +17,6 @@ const (
 	deviceCacheTTL     = 30 * 24 * time.Hour
 )
 
-// deviceCacheDir 是缓存所在目录。测试里可整体替换。
 var deviceCacheDir = func() string {
 	return filepath.Join(os.TempDir(), "sscan")
 }
@@ -45,7 +43,6 @@ type cachedDevice struct {
 
 func deviceCachePath() string { return filepath.Join(deviceCacheDir(), "devices.json") }
 
-// LoadCache 读上次的设备名单；任何异常都当成"没有缓存"。
 func LoadCache() ([]DeviceInfo, string) {
 	data, err := os.ReadFile(deviceCachePath())
 	if err != nil {
@@ -74,7 +71,6 @@ func LoadCache() ([]DeviceInfo, string) {
 	return out, c.Selected
 }
 
-// SaveCache 原子写入当前名单；空名单不覆盖旧缓存，发现失败时还能留下线索。
 func SaveCache(devs []DeviceInfo, selected string) {
 	out := make([]cachedDevice, 0, len(devs))
 	for _, d := range devs {
@@ -101,7 +97,7 @@ func SaveCache(devs []DeviceInfo, selected string) {
 	if os.MkdirAll(dir, 0o700) != nil {
 		return
 	}
-	// 同目录临时文件 + rename：避免读到写了一半的 JSON。
+	// 同目录临时文件 + rename，避免读到写了一半的 JSON。
 	f, err := os.CreateTemp(dir, "devices-*.tmp")
 	if err != nil {
 		return
@@ -189,7 +185,6 @@ func cleanStrings(xs []string) []string {
 	return out
 }
 
-// DeviceKey 端点的身份：IP + 端口 + eSCL 路径。列表排序/显示名都不参与。
 func DeviceKey(d DeviceInfo) string {
 	port := d.Port
 	if port <= 0 || port > 65535 {

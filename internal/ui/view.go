@@ -1,5 +1,3 @@
-// 主视图：页面区 + 设置栏 + 状态栏，弹层单独一层。
-// mygo 是即时模式：view 是状态的函数，每帧重建。
 package ui
 
 import (
@@ -26,7 +24,6 @@ func (a *app) view(c *ui.Context) {
 	a.overlays(c, t)
 }
 
-// statusLabel 用大白话描述设备状态，不出现"探测"这类词。
 func (a *app) statusLabel() string {
 	switch a.devState {
 	case DevOnline:
@@ -52,8 +49,6 @@ func statusColor(s DevState) ui.Color {
 	}
 }
 
-// ── 左侧：扫描页面区 ──
-
 func (a *app) pagesPanel(c *ui.Context, t *ui.Theme) {
 	ui.Column(c).Grow(1).MinWidth(0).Padding(18, 18, 18, 14).Gap(14).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
@@ -78,7 +73,6 @@ func (a *app) pagesPanel(c *ui.Context, t *ui.Theme) {
 	})
 }
 
-// emptyState 没有任何页面时的空态：微信式的大留白 + 图标 + 一句下一步。
 func (a *app) emptyState(c *ui.Context, t *ui.Theme) {
 	ui.Column(c).Grow(1).Center().Children(func() {
 		halo := ui.Row(c).Size(64, 64).Radius(20).Background(colAccentSoft).Center()
@@ -92,8 +86,7 @@ func (a *app) emptyState(c *ui.Context, t *ui.Theme) {
 	})
 }
 
-// pageCell 一张缩略图卡片。不在这里 .Drag()：GridView 的 Reorder 已在外层挂了拖拽源，
-// 内层再挂会抢走按下事件。整张卡片可点，单击或双击都能看大图。
+// 不在这里 .Drag()：GridView 的 Reorder 已在外层挂了拖拽源，内层再挂会抢走按下事件。
 func (a *app) pageCell(c *ui.Context, t *ui.Theme, i int) {
 	p := &a.pages[i]
 	card := ui.Column(c).Key(p.ID).Fill().
@@ -145,8 +138,6 @@ func (a *app) pageCell(c *ui.Context, t *ui.Theme, i int) {
 
 func padPage(n int) string { return fmt.Sprintf("%02d", n) }
 
-// ── 右侧：操作区 ──
-
 func (a *app) settingsPanel(c *ui.Context, t *ui.Theme) {
 	ui.Column(c).Width(railWidth).Padding(0, 18, 18, 18).Children(func() {
 		card := ui.Column(c).Fill().Background(colPanel).Border(1, colLine).Radius(12).
@@ -195,7 +186,6 @@ func (a *app) sizeField(c *ui.Context) {
 	}
 }
 
-// sizeSelectable 只有一种纸型可选时才标"固定"。
 func (a *app) sizeSelectable(dev *scanner.DeviceInfo) bool {
 	if dev == nil {
 		return false
@@ -239,7 +229,6 @@ func dpiLabel(v int) string {
 	return itoa(v) + " dpi"
 }
 
-// intentLabels 把 eSCL Intent 翻成界面中文；非标准值原样显示。
 var intentLabels = map[string]string{
 	"Document":       "文档（推荐）",
 	"TextAndGraphic": "图文混排",
@@ -310,7 +299,6 @@ func (a *app) sourceField(c *ui.Context) {
 	}
 }
 
-// scanButton 主操作：实心 accent、带图标，忙碌时换成转圈的指示。
 func (a *app) scanButton(c *ui.Context, t *ui.Theme) {
 	off := a.devState != DevOnline
 	busy := a.scanning || a.probing
@@ -355,7 +343,6 @@ func (a *app) scanButton(c *ui.Context, t *ui.Theme) {
 	}
 }
 
-// scanFeedback 扫描状态 / 离线提示：只在有事要说时占位。
 func (a *app) scanFeedback(c *ui.Context) {
 	switch {
 	case a.devState == DevOffline && !a.probing:
@@ -398,8 +385,6 @@ func (a *app) exportButton(c *ui.Context) {
 	}
 }
 
-// ── 底部状态栏 ──
-
 func (a *app) statusBar(c *ui.Context, t *ui.Theme) {
 	hairline(c)
 	ui.Row(c).Height(statusBarHeight).FillWidth().Padding(0, 18, 0, 18).
@@ -412,15 +397,12 @@ func (a *app) statusBar(c *ui.Context, t *ui.Theme) {
 			// 显示格式固定为「设备名 (IPv4)」
 			names := make([]string, len(a.devices))
 			for i, d := range a.devices {
-				// 明确离线的在名字上标出来，用户一眼看清为什么别选它
 				if a.probed[d.Idx] && !d.Online {
 					names[i] = d.DisplayName() + "（脱机）"
 				} else {
 					names[i] = d.DisplayName()
 				}
 			}
-			// 当前值也取自 names——收起状态下只显示这一项，
-			// 脱机标注不能只写给展开的列表看
 			cur := names[a.devSel]
 			if ui.Select(c, &cur, names).Width(330).Height(34).Radius(8).Changed() {
 				for i, n := range names {
@@ -463,15 +445,11 @@ func (a *app) statusBar(c *ui.Context, t *ui.Theme) {
 	})
 }
 
-// ── 弹层（页面内弹窗 + 灯箱）──
-
 func (a *app) overlays(c *ui.Context, t *ui.Theme) {
-	// 灯箱
 	if a.lightbox != nil {
 		a.lightboxOverlay(c, t)
 		return
 	}
-	// 对话框
 	switch a.dlg {
 	case DlgExport:
 		a.exportDialog(c, t)
@@ -493,7 +471,6 @@ func (a *app) overlays(c *ui.Context, t *ui.Theme) {
 	}
 }
 
-// confirmDialog 通用确认弹窗（页面内，不用系统弹窗）
 func (a *app) confirmDialog(c *ui.Context, t *ui.Theme, title, detail, okLabel string, onOK func()) {
 	open := a.dlg != DlgNone
 	ui.Modal(c, &open, func() {
@@ -525,18 +502,14 @@ func (a *app) confirmDialog(c *ui.Context, t *ui.Theme, title, detail, okLabel s
 	}
 }
 
-// ── 灯箱 ──
-
 func (a *app) lightboxOverlay(c *ui.Context, t *ui.Theme) {
 	lb := a.lightbox
 	white := func(a float32) ui.Color { return ui.RGBA(255, 255, 255, a) }
-	// 灯箱盖住内容区，系统标题栏照常可用。
 	ui.Overlay(c, func() {
 		back := ui.Column(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 			Background(ui.RGBA(9, 17, 22, 0.97)).Modal()
 
 		back.Children(func() {
-			// 顶栏：页码在左，操作在右，关闭在最右。
 			ui.Row(c).Height(64).Padding(0, 20, 0, 20).
 				AlignItems(ui.Center).Gap(8).Children(func() {
 				ui.Text(c, fmt.Sprintf("第 %d 页", lb.Index+1)).
@@ -582,7 +555,7 @@ func (a *app) lightboxOverlay(c *ui.Context, t *ui.Theme) {
 				}
 			})
 
-			// 大图区。Fill + Contain 把几千像素的原图压进窗口，放大后再用偏移查看。
+			// Fill + Contain 把原图压进窗口，放大后再偏移查看。
 			imgRow := ui.Row(c).Grow(1).MinHeight(0).Center().Padding(8, 44, 8, 44).Clip()
 			imgRow.Children(func() {
 				if lb.Full != nil {
@@ -601,7 +574,6 @@ func (a *app) lightboxOverlay(c *ui.Context, t *ui.Theme) {
 				}
 			})
 
-			// 底栏：中翻页、右缩放，左右等宽保持翻页居中。
 			ui.Row(c).Height(72).Padding(0, 20, 0, 16).AlignItems(ui.Center).Children(func() {
 				ui.Row(c).Width(210)
 
@@ -646,7 +618,6 @@ func (a *app) lightboxOverlay(c *ui.Context, t *ui.Theme) {
 			})
 		})
 
-		// 一个 handler 管整层：滚轮缩放、放大后拖动、点空白关闭。
 		back.HandleInput(func(ev ui.InputEvent) bool {
 			switch ev.Kind {
 			case ui.InputScroll:
@@ -697,7 +668,6 @@ func (a *app) lightboxOverlay(c *ui.Context, t *ui.Theme) {
 			return false
 		})
 
-		// 键盘：Esc 关闭/取消删除，方向键翻页
 		if back.OverlayShortcut(0, ui.KeyEscape) {
 			if lb.ConfirmDelete {
 				lb.ConfirmDelete = false

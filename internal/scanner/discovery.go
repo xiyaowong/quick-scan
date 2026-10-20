@@ -27,7 +27,6 @@ const (
 
 var mdnsGroup = &net.UDPAddr{IP: net.IPv4(224, 0, 0, 251), Port: 5353}
 
-// serviceRecord 一台设备在解析过程中收集到的 DNS-SD 记录。
 type serviceRecord struct {
 	instance string // 实例 FQDN
 	host     string // SRV Target（主机 FQDN）
@@ -37,7 +36,6 @@ type serviceRecord struct {
 	txt      map[string]string
 }
 
-// mdnsBrowser 一次发现过程的状态。
 type mdnsBrowser struct {
 	records    map[string]*serviceRecord // 实例 FQDN → 记录
 	addrs      map[string]string         // 主机 FQDN → IPv4
@@ -57,7 +55,7 @@ type mdnsQuery struct {
 	msg []byte
 }
 
-// Discover 浏览局域网里的 eSCL 扫描仪。ctx 超时即停止，返回已找到的。
+// ctx 超时即停止，返回已找到的。
 func Discover(ctx context.Context) ([]DeviceInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, discoverWait)
 	defer cancel()
@@ -152,7 +150,6 @@ func (s *multicastSocket) read(buf []byte) (int, net.IP, error) {
 
 func (s *multicastSocket) Close() { s.conn.Close() }
 
-// defaultIPv4Iface 找默认路由使用的网卡。
 func defaultIPv4Iface() (*net.Interface, error) {
 	// UDP Dial 只让系统选路，不发包。
 	conn, err := net.DialUDP("udp4", nil, &net.UDPAddr{IP: net.IPv4(8, 8, 8, 8), Port: 53})
@@ -221,7 +218,6 @@ func queryPacket(name string, qtype uint16, qu bool) []byte {
 	return buf
 }
 
-// collect 在 window 内持续收包；resendAfter>0 时到点回调一次 resend。
 func (b *mdnsBrowser) collect(ctx context.Context, window, resendAfter time.Duration, resend func()) {
 	deadline := time.NewTimer(window)
 	defer deadline.Stop()

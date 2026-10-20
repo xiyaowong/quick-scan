@@ -1,5 +1,3 @@
-// 界面状态：设备名单、扫描参数、页面、弹窗与灯箱。
-// 所有状态只活在本进程内存里。
 package ui
 
 import (
@@ -8,9 +6,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// ── 枚举 ──
-
-// ColorMode 色彩（界面用大白话）
 type ColorMode int
 
 const (
@@ -30,7 +25,6 @@ func (c ColorMode) key() string { // 能力里的色彩键（与驱动无关的�
 	}
 }
 
-// PaperSize 纸张大小
 type PaperSize int
 
 const (
@@ -59,7 +53,6 @@ const (
 	DevOnline                  // 绿，探测成功
 )
 
-// ExportFormat 导出格式
 type ExportFormat int
 
 const (
@@ -67,9 +60,6 @@ const (
 	ExportJPG                     // 每页一张 JPG
 )
 
-// ── 页面 ──
-
-// Page 一张已扫描的页面
 type Page struct {
 	ID       uint64     // 全局递增 id（拖拽排序的稳定键）
 	Thumb    *ui.Bitmap // 低清缩略图（240px 级）
@@ -78,7 +68,7 @@ type Page struct {
 	FullPath string     // 高清原图（%TEMP% 下，灯箱/导出时才读）
 }
 
-// 当前应显示的缩略图（含旋转）。Rot==0 时用原缩略图。
+// 旋转缓存尚未生成时退回原缩略图。
 func (p *Page) thumb() *ui.Bitmap {
 	if p.Rot%360 == 0 {
 		return p.Thumb
@@ -89,9 +79,6 @@ func (p *Page) thumb() *ui.Bitmap {
 	return p.ThumbRot
 }
 
-// ── 对话框与灯箱 ──
-
-// DialogKind 页面内的弹窗，不走系统消息框。
 type DialogKind int
 
 const (
@@ -101,7 +88,6 @@ const (
 	DlgClearConfirm
 )
 
-// ExportPhase 导出流程状态
 type ExportPhase int
 
 const (
@@ -110,7 +96,6 @@ const (
 	PhaseDone
 )
 
-// ExportDone 导出完成信息
 type ExportDone struct {
 	Display   string // 展示文案
 	Dir       string // 真实目录（"打开所在文件夹"用）
@@ -118,7 +103,6 @@ type ExportDone struct {
 	PageCount int
 }
 
-// Lightbox 灯箱：看大图、翻页、转正、导出。
 type Lightbox struct {
 	Index   int
 	Full    *ui.Bitmap // 当前显示的大图（已按旋转烘焙）
@@ -177,10 +161,7 @@ func (lb *Lightbox) clampPan() {
 	lb.PanY = clamp(lb.PanY, -maxY, maxY)
 }
 
-// ── 主状态 ──
-
 type app struct {
-	// 设备
 	devices    []scanner.DeviceInfo
 	devSel     int
 	nextDevIdx int // 单调递增的设备身份；缓存与 mDNS 合并时保持稳定
@@ -200,26 +181,21 @@ type app struct {
 	// hint 是状态栏右侧唯一的一行提示：检测进度、正在连哪台、失败原因。
 	hint string
 
-	// 扫描参数（界面右侧）
 	size   PaperSize
 	dpi    int    // 设备支持的清晰度（见 DeviceInfo.DPIs）
 	intent string // eSCL Intent，默认 Document
 	color  ColorMode
 	feeder bool // false=玻璃板 true=进纸口
 
-	// 页面
 	pages      []Page
 	nextPageID uint64
 	pageGrid   ui.GridState
 
-	// 扫描任务
 	scanning   bool
 	scanStatus string
 
-	// 弹窗
 	dlg DialogKind
 
-	// 导出对话框
 	exportFmt      ExportFormat
 	exportPhase    ExportPhase
 	exportDone     ExportDone
@@ -230,13 +206,10 @@ type app struct {
 	exportDoneN    int // 导出进度：已完成页数
 	exportTotalN   int // 导出进度：总页数
 
-	// 灯箱
 	lightbox *Lightbox
 
-	// 清空 / 退出确认
 	quitConfirmed bool
 
-	// OCR 文件名候选
 	ocrNames   []string
 	ocrRunning bool
 	ocrPicked  bool
@@ -267,8 +240,6 @@ func (a *app) current() *scanner.DeviceInfo {
 	return nil
 }
 
-// allocDevIdx 分配一个稳定的设备身份。缓存还是 mDNS 来的都走这里，
-// 合并时同一个端点保持原 Idx，正在飞的探测结果仍然有效。
 func (a *app) allocDevIdx() int {
 	a.nextDevIdx++
 	return a.nextDevIdx
@@ -291,7 +262,6 @@ func (a *app) saveCache() {
 	scanner.SaveCache(a.devices, selected)
 }
 
-// refreshState 根据当前选中设备的探测结果刷新状态灯。
 func (a *app) refreshState() {
 	d := a.current()
 	if d == nil {
@@ -309,12 +279,10 @@ func (a *app) refreshState() {
 	}
 }
 
-// movePages 拖拽排序：把 rows 里的页整体移到 to 之前
 func (a *app) movePages(rows []int, to int) {
 	if len(rows) == 0 {
 		return
 	}
-	// 取出要移动的页（保持相对顺序）
 	set := map[int]bool{}
 	for _, r := range rows {
 		set[r] = true
@@ -327,7 +295,6 @@ func (a *app) movePages(rows []int, to int) {
 			rest = append(rest, p)
 		}
 	}
-	// to 是相对原列表的下标；换算成 rest 里的插入位
 	insert := to
 	for _, r := range rows {
 		if r < to {
@@ -344,11 +311,7 @@ func (a *app) movePages(rows []int, to int) {
 	out = append(out, moving...)
 	out = append(out, rest[insert:]...)
 	a.pages = out
-	// 灯箱下标跟随
 	if a.lightbox != nil {
-		// 找到灯箱那一页的新下标
-		target := -1
-		_ = target // 简化：换页后灯箱重新请求即可，下标失配由请求时兜底
 		a.lightbox.Dirty = true
 	}
 }

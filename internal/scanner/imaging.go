@@ -1,5 +1,3 @@
-// 图像处理：解码、旋转、缩放。
-// 原图是 eSCL 直接返回的 JPEG/PNG；界面只加载低清缩略图，双击才读原图。
 package scanner
 
 import (
@@ -14,8 +12,7 @@ import (
 	"golang.org/x/image/draw"
 )
 
-// Decode 按文件头解码 BMP / JPEG / PNG 为 *image.RGBA。
-// 扫描结果通常是 JPEG；BMP 分支保留给 OCR 测试与旧测试样张。
+// Decode 按文件头解码 BMP / JPEG / PNG；BMP 分支留给 OCR 测试和旧样张。
 func Decode(path string) (*image.RGBA, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -51,7 +48,6 @@ func toRGBA(src image.Image) *image.RGBA {
 	return dst
 }
 
-// Resize 高质量缩放（CatmullRom：缩略图/OCR 预处理共用）
 func Resize(src *image.RGBA, nw, nh int) *image.RGBA {
 	if src.Bounds().Dx() == nw && src.Bounds().Dy() == nh {
 		return src
@@ -61,7 +57,6 @@ func Resize(src *image.RGBA, nw, nh int) *image.RGBA {
 	return dst
 }
 
-// resizeToLongEdge 长边压到 maxEdge（比例不变）；不放大
 func resizeToLongEdge(src *image.RGBA, maxEdge int) *image.RGBA {
 	w, h := src.Bounds().Dx(), src.Bounds().Dy()
 	long := max(w, h)
@@ -73,7 +68,6 @@ func resizeToLongEdge(src *image.RGBA, maxEdge int) *image.RGBA {
 	return Resize(src, nw, nh)
 }
 
-// Rotate90 顺时针旋转 90° 的倍数（deg ∈ 0/90/180/270）
 func Rotate90(src *image.RGBA, deg int) *image.RGBA {
 	switch deg % 360 {
 	case 90:
@@ -129,14 +123,12 @@ func rot180(src *image.RGBA) *image.RGBA {
 	return dst
 }
 
-// encodeJPEG 编码 JPG 字节
 func encodeJPEG(src *image.RGBA, quality int) ([]byte, error) {
 	var buf bytes.Buffer
 	err := jpeg.Encode(&buf, src, &jpeg.Options{Quality: quality})
 	return buf.Bytes(), err
 }
 
-// encodePNG 编码 PNG 字节（OCR 前的中间格式）
 func encodePNG(src *image.RGBA) ([]byte, error) {
 	var buf bytes.Buffer
 	err := png.Encode(&buf, src)
