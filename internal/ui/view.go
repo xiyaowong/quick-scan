@@ -1,4 +1,4 @@
-// 主视图：标题栏 + 页面区 + 设置栏 + 状态栏，弹层单独一层。
+// 主视图：页面区 + 设置栏 + 状态栏，弹层单独一层。
 // mygo 是即时模式：view 是状态的函数，每帧重建。
 package ui
 
@@ -14,11 +14,9 @@ import (
 )
 
 func (a *app) view(c *ui.Context) {
-	// 固定浅色主题，不跟随系统深色模式。
 	c.SetTheme(lightTheme())
 	t := c.Theme()
 	ui.Column(c).Fill().Background(t.Background).Children(func() {
-		a.titleBar(c, t)
 		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
 			a.pagesPanel(c, t)
 			a.settingsPanel(c, t)
@@ -26,34 +24,6 @@ func (a *app) view(c *ui.Context) {
 		a.statusBar(c, t)
 	})
 	a.overlays(c, t)
-}
-
-// ── 顶部：品牌标题栏（配合无边框标题样式）──
-
-func (a *app) titleBar(c *ui.Context, t *ui.Theme) {
-	bar := c.TitleBar()
-	h := float32(TitleBarHeight)
-	if bar.Height > h {
-		h = bar.Height
-	}
-	row := ui.Row(c).Height(h).FillWidth().
-		Padding(0, bar.Right, 0, bar.Left).
-		Background(colBg).AlignItems(ui.Center).DragWindow()
-	row.Children(func() {
-		ui.Row(c).PaddingStart(18).Gap(9).AlignItems(ui.Center).Children(func() {
-			mark := ui.Row(c).Size(26, 26).Radius(7).Background(colAccent).Center()
-			mark.Children(func() {
-				ui.Icon(c, icoPrinter).FontSize(14).TextColor(ui.RGB(255, 255, 255))
-			})
-			ui.Text(c, "simple-scan").FontSize(13).FontWeight(500).TextColor(colInk)
-		})
-		ui.Row(c).Grow(1)
-		ui.Row(c).PaddingEnd(16).Gap(6).AlignItems(ui.Center).Children(func() {
-			ui.Row(c).Size(6, 6).Radius(3).Background(statusColor(a.devState))
-			ui.Text(c, a.statusLabel()).FontSize(11).TextColor(colMuted)
-		})
-	})
-	hairline(c)
 }
 
 // statusLabel 用大白话描述设备状态，不出现"探测"这类词。
@@ -122,11 +92,10 @@ func (a *app) emptyState(c *ui.Context, t *ui.Theme) {
 	})
 }
 
-// pageCell 一张缩略图卡片。
+// pageCell 一张缩略图卡片。不在这里 .Drag()：GridView 的 Reorder 已在外层挂了拖拽源，
+// 内层再挂会抢走按下事件。整张卡片可点，单击或双击都能看大图。
 func (a *app) pageCell(c *ui.Context, t *ui.Theme, i int) {
 	p := &a.pages[i]
-	// 不在这里 .Drag()：GridView 的 Reorder 已在格子外层挂了拖拽源，
-	// 内层再挂一个会把按下事件抢走，拖拽排序就废了。
 	card := ui.Column(c).Key(p.ID).Fill().
 		Background(colPanel).Border(1, colLine).Radius(8).Clip().
 		Transition(ui.ElementTransition{Duration: 140 * time.Millisecond, Colors: true})
@@ -154,7 +123,6 @@ func (a *app) pageCell(c *ui.Context, t *ui.Theme, i int) {
 				TextColor(ui.RGB(255, 255, 255))
 		})
 		hairline(c)
-		// 看图不用单独按钮：整张卡片都能点，悬停时图上还会提示「点击看大图」。
 		ui.Row(c).Height(42).Padding(0, 8, 0, 8).AlignItems(ui.Center).Gap(2).Children(func() {
 			ui.Icon(c, icoGrip).FontSize(11).TextColor(colFaint).Tooltip("按住拖动排序")
 			ui.Row(c).Grow(1)
@@ -170,7 +138,6 @@ func (a *app) pageCell(c *ui.Context, t *ui.Theme, i int) {
 			}
 		})
 	})
-	// 单击或双击都能看大图；按钮会先消耗自己的点击，不会误触。
 	if card.Clicked() || card.DoubleClicked() {
 		a.openLightbox(i)
 	}
@@ -558,19 +525,18 @@ func (a *app) confirmDialog(c *ui.Context, t *ui.Theme, title, detail, okLabel s
 	}
 }
 
-// ── 灯箱（双击放大）──
+// ── 灯箱 ──
 
 func (a *app) lightboxOverlay(c *ui.Context, t *ui.Theme) {
 	lb := a.lightbox
 	white := func(a float32) ui.Color { return ui.RGBA(255, 255, 255, a) }
-	// 灯箱只盖内容区：上面留出标题栏，系统的窗口按钮和拖动区域照常可用，
-	// 也不会出现“点灯箱按钮却点到最小化/关闭”的情况。
+	// 灯箱盖住内容区，系统标题栏照常可用。
 	ui.Overlay(c, func() {
-		back := ui.Column(c).Absolute().Left(0).Top(TitleBarHeight).Right(0).Bottom(0).
+		back := ui.Column(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 			Background(ui.RGBA(9, 17, 22, 0.97)).Modal()
 
 		back.Children(func() {
-			// 顶栏：页码在左，操作在右，关闭永远在最右边。
+			// 顶栏：页码在左，操作在右，关闭在最右。
 			ui.Row(c).Height(64).Padding(0, 20, 0, 20).
 				AlignItems(ui.Center).Gap(8).Children(func() {
 				ui.Text(c, fmt.Sprintf("第 %d 页", lb.Index+1)).
@@ -625,10 +591,8 @@ func (a *app) lightboxOverlay(c *ui.Context, t *ui.Theme) {
 					if lb.Zoom > 1.0 || lb.PanX != 0 || lb.PanY != 0 {
 						img.Translate(lb.PanX, lb.PanY).Scale(lb.Zoom, lb.Zoom)
 					}
-					// 事件坐标相对灯箱层，图片的 Bounds 是窗口坐标，纵向扣掉标题栏。
-					r := img.Bounds()
-					r.Y -= TitleBarHeight
-					lb.img = r
+					// 灯箱层和内容区都从客户区顶部算起，Bounds 直接可用。
+					lb.img = img.Bounds()
 				} else {
 					ui.Column(c).Gap(10).Center().Children(func() {
 						ui.Spinner(c).FontSize(18).TextColor(white(0.7))

@@ -19,16 +19,6 @@ const (
 	ColorBW                     // 黑白
 )
 
-func (c ColorMode) label() string {
-	switch c {
-	case ColorGray:
-		return "灰度"
-	case ColorBW:
-		return "黑白"
-	default:
-		return "彩色"
-	}
-}
 func (c ColorMode) key() string { // 能力里的色彩键（与驱动无关的界面语义）
 	switch c {
 	case ColorGray:
@@ -49,16 +39,6 @@ const (
 	SizeLetter
 )
 
-func (s PaperSize) label() string {
-	switch s {
-	case SizeA5:
-		return "A5（148 × 210 mm）"
-	case SizeLetter:
-		return "Letter（216 × 279 mm）"
-	default:
-		return "A4（210 × 297 mm）"
-	}
-}
 func (s PaperSize) key() string {
 	switch s {
 	case SizeA5:
@@ -176,8 +156,7 @@ func (lb *Lightbox) zoomBy(f float32) {
 	lb.clampPan()
 }
 
-// contentRect 是图片真正画出来的地方。Contain 会在容器里留黑边，
-// 只有点在这块区域里才算点在图上，点黑边应该关灯箱。
+// contentRect 是图片真正画出来的地方；点黑边应该关灯箱。
 func (lb *Lightbox) contentRect() ui.Rect {
 	box := lb.img
 	if box.W <= 0 || box.H <= 0 || lb.ImgW <= 0 || lb.ImgH <= 0 {
@@ -210,8 +189,7 @@ type app struct {
 	probing    bool // 正在探测选中的设备
 	probeSeq   int  // 探测序号：列表重建时 +1，旧探测回调据此不动新状态
 	probingIdx int  // 正在探测的设备 Idx（0=没有）；合并时别把它当陈旧缓存删掉
-	// autoQueue 非空 = 正在"按名单顺序找第一台在线的"接力（见 probeFirstOnline）。
-	// 存驱动下标 Idx：列表会被排序重排，Idx 才是稳定句柄（同名设备也分得开）。
+	// autoQueue 非空 = 正在按名单顺序找第一台在线的；存 Idx，列表重排后仍稳定。
 	autoQueue []int
 	// userPicked 用户手动选过设备：接力让位，不再自动改选中项。重新检测时清零。
 	userPicked   bool
@@ -219,8 +197,7 @@ type app struct {
 	probed       map[int]bool // 已探测过的设备（键是 scanner.DeviceInfo.Idx，不是列表下标）
 	detecting    bool
 	devGrid      ui.GridState
-	// hint 状态栏右侧唯一的一行提示（检测进度 / 正在连哪台 / 驱动报的失败原因）。
-	// 只放"别处看不到"的信息：设备名单在下拉里，状态在灯上，动作在按钮上。
+	// hint 是状态栏右侧唯一的一行提示：检测进度、正在连哪台、失败原因。
 	hint string
 
 	// 扫描参数（界面右侧）
@@ -259,7 +236,7 @@ type app struct {
 	// 清空 / 退出确认
 	quitConfirmed bool
 
-	// OCR 文件名候选（预留能力，库后定）
+	// OCR 文件名候选
 	ocrNames   []string
 	ocrRunning bool
 	ocrPicked  bool

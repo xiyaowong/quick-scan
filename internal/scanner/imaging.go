@@ -73,30 +73,6 @@ func resizeToLongEdge(src *image.RGBA, maxEdge int) *image.RGBA {
 	return Resize(src, nw, nh)
 }
 
-// subImage 裁剪（不拷贝底层数组的子区域视图转独立 RGBA）
-func subImage(src *image.RGBA, x0, y0, x1, y1 int) *image.RGBA {
-	b := src.Bounds()
-	if x1 > b.Dx() {
-		x1 = b.Dx()
-	}
-	if y1 > b.Dy() {
-		y1 = b.Dy()
-	}
-	if x0 < 0 {
-		x0 = 0
-	}
-	if y0 < 0 {
-		y0 = 0
-	}
-	if x1 <= x0 || y1 <= y0 {
-		return src
-	}
-	sub := src.SubImage(image.Rect(x0, y0, x1, y1)).(*image.RGBA)
-	dst := image.NewRGBA(image.Rect(0, 0, x1-x0, y1-y0))
-	draw.Draw(dst, dst.Bounds(), sub, sub.Bounds().Min, draw.Src)
-	return dst
-}
-
 // Rotate90 顺时针旋转 90° 的倍数（deg ∈ 0/90/180/270）
 func Rotate90(src *image.RGBA, deg int) *image.RGBA {
 	switch deg % 360 {

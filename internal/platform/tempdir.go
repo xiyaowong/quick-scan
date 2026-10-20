@@ -12,9 +12,6 @@ const tempPrefix = "sscan_"
 
 var tempRoot = filepath.Join(os.TempDir(), tempPrefix+strconv.Itoa(os.Getpid()))
 
-// TempRoot 本进程的临时根目录。
-func TempRoot() string { return tempRoot }
-
 // PagesDir 扫描原图目录。
 func PagesDir() string { return filepath.Join(tempRoot, "pages") }
 

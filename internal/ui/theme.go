@@ -36,7 +36,6 @@ var (
 
 // 版式度量。
 const (
-	TitleBarHeight  = 46
 	statusBarHeight = 52
 	railWidth       = 348
 )

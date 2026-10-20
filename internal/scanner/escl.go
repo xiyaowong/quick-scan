@@ -38,9 +38,7 @@ const (
 	DefaultIntent = "Document"
 )
 
-// scannerHTTP 直连局域网设备：显式禁用代理。
-// 系统/环境里配了 HTTP 代理时，默认 Transport 会把 192.168.x.x 的请求也发给代理，
-// 表现为"设备明明在线却连不上"。
+// scannerHTTP 直连局域网设备并禁用代理；否则系统代理会把 192.168.x.x 的请求也劫走。
 var scannerHTTP = &http.Client{
 	Transport: &http.Transport{
 		Proxy: nil,
@@ -96,8 +94,7 @@ type inputCapsXML struct {
 	MinHeight int `xml:"MinHeight"`
 	MaxHeight int `xml:"MaxHeight"`
 
-	// 有的固件把 ColorModes/DocumentFormats 直接放在 InputCaps 下，
-	// 有的放在 SettingProfiles/SettingProfile 里——两处都收。
+	// ColorModes/DocumentFormats 可能直接挂在 InputCaps 下，也可能在 SettingProfiles 里，两处都收。
 	ColorModes      []string      `xml:"ColorModes>ColorMode"`
 	DocumentFormats []string      `xml:"DocumentFormats>DocumentFormat"`
 	Intents         []string      `xml:"SupportedIntents>Intent"`
@@ -129,8 +126,7 @@ type axisRangeXML struct {
 	Step int `xml:"Step"`
 }
 
-// parseCapabilities 解析能力 XML。解析失败不算设备离线——能回 HTTP 就说明在线，
-// 只是拿不到能力（界面按"能力未知"处理，所有选项可点）。
+// parseCapabilities 解析能力 XML；解析失败不算离线，只是选项全开。
 func parseCapabilities(data []byte) (*scannerCapabilities, error) {
 	var raw capsXML
 	if err := xml.Unmarshal(data, &raw); err != nil {
@@ -372,8 +368,7 @@ func (c *scannerCapabilities) intents() []string {
 	return out
 }
 
-// pickFormat 选一个我们解码得了的图片格式，优先级 JPEG > PNG。
-// 设备只报 PDF 时返回空——PDF 需要渲染库，本工具不接。
+// pickFormat 选一个能解码的图片格式，JPEG > PNG；只报 PDF 时返回空。
 func pickFormat(formats []string) string {
 	for _, want := range []string{"image/jpeg", "image/jpg", "image/png"} {
 		for _, f := range formats {
@@ -396,8 +391,7 @@ func pickFormat(formats []string) string {
 
 // ── 探测 ──
 
-// Probe 读设备能力并写回 DeviceInfo。HTTP 通了就算在线：
-// 能力解析失败只意味着选项全开，不是离线。
+// Probe 读设备能力并写回 DeviceInfo；HTTP 通了就算在线。
 func Probe(ctx context.Context, d *DeviceInfo) error {
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
@@ -456,8 +450,7 @@ type Options struct {
 	Intent string // eSCL Intent；空 = Document
 }
 
-// Scan 建任务 → 逐张取回 → 落盘，返回图片路径（ADF 一批多张）。
-// 所有请求都直连设备；失败时已建的任务会被 DELETE 掉，不留给打印机。
+// Scan 建任务 → 逐张取回 → 落盘，返回图片路径；失败时 DELETE 掉任务。
 func Scan(ctx context.Context, d *DeviceInfo, opts Options, dir string) ([]string, error) {
 	if d.caps == nil {
 		if err := Probe(ctx, d); err != nil {
@@ -555,8 +548,7 @@ func pickColorMode(in *inputCaps, key string) string {
 	return esclColorName(key)
 }
 
-// pickIntent 把界面选的 Intent 落到设备支持的值上：精确匹配优先，
-// 不支持就退回 Document，再不行用设备报的第一个；设备没报就按规范发 Document。
+// pickIntent 把界面选的 Intent 落到设备支持的值上：精确匹配 → Document → 设备第一项。
 func pickIntent(in *inputCaps, want string) string {
 	if want == "" {
 		want = DefaultIntent
@@ -588,8 +580,7 @@ func esclColorName(key string) string {
 	}
 }
 
-// buildScanSettings 生成 ScanSettings XML。尺寸按纸张物理尺寸 × dpi 计算，
-// 超出设备最大扫描区域就夹到边界（打印机不会因为请求大了几像素就拒绝）。
+// buildScanSettings 生成 ScanSettings XML：尺寸按物理尺寸 × dpi，超限则夹到边界。
 func buildScanSettings(version, format, colorMode, source string, opts Options, in *inputCaps) []byte {
 	w, h := paperUnits[opts.Size][0], paperUnits[opts.Size][1]
 	scale := float64(opts.DPI) / 300.0
@@ -674,8 +665,7 @@ func resolveURL(base, ref string) string {
 	return b.ResolveReference(r).String()
 }
 
-// nextDocument 取下一张。返回 (nil, "", nil) 表示没有更多页面。
-// 扫描刚建任务时设备可能短暂返回 503，按退避重试；整体受 pageTimeout 约束。
+// nextDocument 取下一张；刚建任务时的 503 按退避重试。
 func nextDocument(ctx context.Context, jobURL string) ([]byte, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, pageTimeout)
 	defer cancel()

@@ -1,6 +1,4 @@
-// simple-scan —— Windows 桌面扫描工具。
-// mygo 原生 UI + eSCL 客户端 + mDNS 发现，扫描走局域网 HTTP。
-// OCR 模型内嵌在 exe 里，启动时释放到 %TEMP%\sscan_<pid>\，退出即清。
+// simple-scan：Windows 扫描工具。mygo UI + eSCL/mDNS，OCR 模型内嵌。
 package main
 
 import (
@@ -16,28 +14,22 @@ import (
 )
 
 func main() {
-	// 先脱钩再干别的：晚一步用户就会看见控制台闪一下。
-	// 从终端启动时控制台留着，报错能看见；双击时摘掉，不留终端窗口。
+	// 双击启动时摘掉控制台；从终端启动时保留，报错能看见。
 	platform.DetachIfStandalone()
 
-	// 隐藏 CLI：--ocr-test <图片> 走一遍 OCR 文件名候选管线（无窗口、不碰打印机），
-	// 给验收/调试用。正常启动不传参，走 GUI。
+	// --ocr-test <图片>：不开窗口，跑一遍 OCR 文件名候选。
 	if len(os.Args) >= 3 && os.Args[1] == "--ocr-test" {
 		scanner.RunOcrTest(os.Args[2])
 		return
 	}
 	if err := run(); err != nil {
-		// 从终端跑时这行就看在终端里；双击启动（无控制台）时它无处可去，
-		// 但进程会以非零码退出——真正的"闪退"要靠带终端启动来回溯。
 		fmt.Fprintln(os.Stderr, "启动失败:", err)
 		os.Exit(1)
 	}
 }
 
 func run() (err error) {
-	// run 里的 panic 也兜住转成 error：至少走上面那条 stderr 的路。
-	// 进程直接死掉（coredump 一类）的情况这里兜不住，也兜不住任何写盘动作——
-	// 所以排查一律从终端启动，看现场输出。
+	// panic 也转成 error，从终端启动时能看到原因。
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic: %v", r)
@@ -45,7 +37,6 @@ func run() (err error) {
 	}()
 
 	platform.CleanupStale()
-	// 内嵌 OCR 模型先落临时目录——扫描后识别首页标题要用
 	if err := platform.EnsureAssets(); err != nil {
 		return err
 	}
@@ -53,33 +44,29 @@ func run() (err error) {
 	app := appui.New()
 	mygo.App.WhenReady(func() {
 		win := mygo.NewWindow(mygo.WindowOptions{
-			Title:          "simple-scan",
+			Title:          "简易扫描",
 			Width:          1180,
 			Height:         820,
 			UseContentSize: true,
 			MinWidth:       920,
 			MinHeight:      660,
-			// 自绘标题栏：系统窗口按钮浮在内容右上角，品牌区可拖动窗口。
-			TitleBarStyle:  mygo.TitleBarHidden,
-			TitleBarHeight: appui.TitleBarHeight,
 			Content:        myui.View(app.View),
 		})
 		appui.Win = win
-		// 关窗拦截：有未导出页面时先弹确认
+		// 有未导出页面时先确认再关。
 		win.OnClose(func(e *mygo.CloseEvent) {
 			if app.CloseAllowed() {
-				return // 放行（确认退出后由对话框置位）
+				return
 			}
 			e.PreventDefault()
 			app.AskQuit()
 			win.Update(func() {})
 		})
-		// 启动：先用 %TEMP% 缓存立刻显示上次的设备，同时后台 mDNS 全量刷新
 		app.Startup()
 	})
 	if err := mygo.App.Run(); err != nil {
 		return err
 	}
-	platform.Cleanup() // 窗口全关后清理 %TEMP% 里的扫描页
+	platform.Cleanup()
 	return nil
 }

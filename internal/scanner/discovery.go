@@ -1,21 +1,7 @@
-// 设备发现：mDNS/DNS-SD 浏览 _uscan._tcp（eSCL 扫描仪的标准服务类型）。
+// 设备发现：浏览 mDNS/DNS-SD 的 _uscan._tcp，只采用 IPv4。
 //
-// 只采用 IPv4：服务条目必须能解析出 A 记录，只有 AAAA 的直接跳过。
-//
-// 为什么不用高层 mDNS 库：实测 HP Laser MFP 116w 对 PTR 查询只回 PTR + A，
-// 不带 SRV/TXT；只浏览 PTR 的库拼不出完整条目（拿不到端口/TXT）。这里在
-// miekg/dns 之上自己走 DNS-SD 的两步解析：
-//
-//  1. 组播问 PTR _uscan._tcp.local.          → 服务实例名 + 应答方 IP
-//  2. 向应答方单播问 SRV / TXT（实例名）      → 端口、主机名、ty（设备名）、rs（路径）
-//     SRV 应答通常附带主机的 A 记录。
-//
-// TXT 里用得到的键：
-//
-//	ty  设备名（型号），如 "HP Laser MFP 116w"
-//	rs  eSCL 资源路径，如 "eSCL"（缺省就是 eSCL）
-//
-// 显示格式固定为 "设备名 (IPv4)"，见 DeviceInfo.DisplayName。
+// HP 116w 对 PTR 查询只回 PTR + A，不带 SRV/TXT，所以自己做两步解析：
+// 组播问 PTR 拿实例名和应答方 IP，再向应答方单播问 SRV/TXT 拿端口和 ty/rs。
 package scanner
 
 import (
@@ -90,8 +76,7 @@ func Discover(ctx context.Context) ([]DeviceInfo, error) {
 	}
 	defer b.close()
 
-	// 单播查询用临时端口（防火墙对这类"请求-应答"流量是放行的），
-	// 只有接收组播 PTR 应答需要绑定 5353。
+	// 单播查询用临时端口；只有接收组播 PTR 应答需要绑定 5353。
 	uc, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
 	if err != nil {
 		return nil, fmt.Errorf("无法创建 mDNS 查询 socket：%w", err)
@@ -136,9 +121,7 @@ func Discover(ctx context.Context) ([]DeviceInfo, error) {
 	return b.devices(), nil
 }
 
-// multicastSocket 绑定 5353、加入组播组，从默认路由所在网卡收发。
-// 只用默认网卡：扫描仪和电脑在同一个局域网（这是工具的使用前提），
-// 多网卡（VPN/虚拟网卡）全加入反而会选错出接口。
+// multicastSocket 绑定 5353 并从默认路由网卡收发；多网卡全加入反而容易选错出口。
 type multicastSocket struct {
 	conn *net.UDPConn
 }
@@ -169,9 +152,9 @@ func (s *multicastSocket) read(buf []byte) (int, net.IP, error) {
 
 func (s *multicastSocket) Close() { s.conn.Close() }
 
-// defaultIPv4Iface 找默认路由使用的网卡（对外的本地 IPv4 地址所属网卡）。
+// defaultIPv4Iface 找默认路由使用的网卡。
 func defaultIPv4Iface() (*net.Interface, error) {
-	// UDP Dial 不发包，只让系统选路，用于问出默认出接口的本地地址。
+	// UDP Dial 只让系统选路，不发包。
 	conn, err := net.DialUDP("udp4", nil, &net.UDPAddr{IP: net.IPv4(8, 8, 8, 8), Port: 53})
 	if err == nil {
 		local := conn.LocalAddr().(*net.UDPAddr).IP.To4()
@@ -226,8 +209,7 @@ func ifaceIPv4(ifi *net.Interface) net.IP {
 	return nil
 }
 
-// queryPacket 构造查询。qu=true 时置 QU 位（请求单播应答）；
-// 注意：实测 HP 116w 会忽略带 QU 位的组播查询，PTR 必须用普通组播。
+// queryPacket 构造查询。qu=true 置 QU 位请求单播应答；PTR 必须用普通组播，否则 HP 会忽略。
 func queryPacket(name string, qtype uint16, qu bool) []byte {
 	m := new(dns.Msg)
 	m.SetQuestion(name, qtype)
@@ -392,7 +374,7 @@ func (b *mdnsBrowser) devices() []DeviceInfo {
 	return found
 }
 
-// lookupIPv4 兜底：SRV 应答没带 A 记录时，用系统解析器找 IPv4（只认 A）。
+// lookupIPv4 兜底：SRV 没带 A 记录时，用系统解析器找 IPv4。
 func lookupIPv4(host string) string {
 	addrs, err := net.LookupIP(strings.TrimSuffix(host, "."))
 	if err != nil {

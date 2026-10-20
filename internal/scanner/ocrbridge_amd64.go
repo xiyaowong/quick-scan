@@ -1,7 +1,6 @@
 //go:build windows && amd64 && cgo
 
-// ocrbridge 的 cgo 绑定：真实现（静态链 Rust staticlib）。
-// 识别在主程序进程内跑（64 位），模型三件套由 platform 从内嵌资产释放。
+// ocrbridge 的 cgo 绑定：静态链 Rust staticlib，只搬运原始检测数据，筛选在 ocr.go。
 package scanner
 
 /*
@@ -11,7 +10,6 @@ package scanner
 #include <stddef.h>
 
 // 与 Rust 端 #[repr(C)] OcrLine 逐字段对应，顺序不能改。
-// 这里只做"原始检测数据"的搬运，不做任何筛选（筛选在 ocr.go）。
 typedef struct {
 	unsigned char* text;
 	size_t         text_len;
@@ -42,9 +40,7 @@ import (
 	"sscan/internal/platform"
 )
 
-// ocrLine 一行识别结果（与 Rust 端 #[repr(C)] 对应的 Go 视图）。
-// 全部是原始检测数据：文字、置信度、以及相对"送进去那张图"的文字框几何。
-// 哪些算候选、怎么排序，由 ocr.go 决定——本文件不做任何筛选。
+// ocrLine 一行原始识别结果：文字、置信度、相对输入图的文字框几何。
 type ocrLine struct {
 	Text   string
 	Score  float32

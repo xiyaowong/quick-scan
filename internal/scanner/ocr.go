@@ -1,6 +1,4 @@
-// OCR 文件名候选：rusto-rs（纯 Rust，PP-OCRv6 模型）静态链入主程序（仅 64 位 Windows）。
-// 架子分两层：本文件是无 cgo 的编排层（后台跑、失败静默、候选进导出对话框）；
-// cgo 绑定在 ocrbridge_amd64.go（真实现）与 ocrbridge_stub.go（其它构建）。
+// OCR 文件名候选：rusto-rs（纯 Rust）静态链入，编排在本文件，cgo 绑定见 ocrbridge_*。
 package scanner
 
 import (
@@ -13,13 +11,8 @@ import (
 	"unicode/utf8"
 )
 
-// Suggest 从一页原图提取文件名候选：
-// 解码 → 长边压到 1600（提速 + 归一）→ PNG → 识别 → 清洗/筛选/排序成候选。
-//
-// 整页识别而不是只裁顶部：①候选能来自页面任何位置的标题
-// ②不用赌"标题在上 35% 内" ③正文段落靠 markParagraphs 成组剔掉，
-// 不再依赖裁剪把正文挡在外面。代价是识别稍慢（仍远快于一次扫描）。
-// 筛选/排序全在这一侧（candidateRanking），Rust 只回原始行。
+// Suggest 从一页原图提取文件名候选：解码 → 缩到长边 1600 → 识别 → 清洗排序。
+// 整页识别，正文段落由 markParagraphs 成组剔除；Rust 只返回原始行。
 func Suggest(imgPath string, rot int) ([]string, error) {
 	r, err := SuggestRanking(imgPath, rot)
 	if err != nil {
@@ -47,17 +40,16 @@ func SuggestRanking(imgPath string, rot int) (*ranking, error) {
 	if err != nil {
 		return nil, err
 	}
-	// 几何量是相对"送进去的那张图"的像素，评分要用它的宽高做归一
+	// 评分用送进去那张图的宽高做归一。
 	b := small.Bounds()
 	return candidateRanking(lines, b.Dx(), b.Dy()), nil
 }
 
-// ── 候选生成：只看原始识别行（文字 + 置信度 + 文字框几何），全在这里定 ──
+// ── 候选生成：只用识别行（文字 + 置信度 + 文字框几何） ──
 //
-// 这是在"没有版面分析模型"的前提下，用几何启发式逼近"哪一行是标题"：
-// 标题的特征是 **字号明显大于正文 + 位置靠上 + 横向铺得开**；
-// 正文段落则相反——同字号、同左边界、上下相邻成串，据此整段剔除。
-// 阈值都写成常量，想调只改这一段。调参用 --ocr-test <图片> --ocr-rank 看明细。
+// 没有版面分析模型，用几何启发式逼近"哪一行是标题"：
+// 字号明显大于正文、位置靠上、横向铺得开；正文段落则同字号同左边界成串。
+// 阈值都在这一节，调参用 --ocr-test <图片> --ocr-rank 看明细。
 
 const (
 	maxCandidates = 8  // 给用户多少条候选（对话框里 Wrap 换行，多给几条不碍事）
@@ -87,16 +79,15 @@ func dropBody(picks []ocrPick) []ocrPick {
 
 // ocrKept 通过硬性淘汰、等待打分的行
 type ocrKept struct {
-	line  ocrLine
-	name  string
-	body  bool // 属于正文段落（同字号同左边界成组折行）
-	score float32
+	line ocrLine
+	name string
+	body bool // 属于正文段落（同字号同左边界成组折行）
 }
 
 // ranking 是候选生成的中间结果，单独成形是为了能打印出来调参
 type ranking struct {
 	medianH  float32
-	all      []ocrKept // 通过硬性淘汰的行（带 body/score）
+	all      []ocrKept // 通过硬性淘汰的行（带 body）
 	bodyRank []ocrKept // 被判为正文段落的行
 	picks    []ocrPick // 按分数排好序的候选
 	out      []string
@@ -110,8 +101,7 @@ func candidateRanking(lines []ocrLine, frameW, frameH int) *ranking {
 	if frameW <= 0 || frameH <= 0 || len(lines) == 0 {
 		return r
 	}
-	// 中位字号：用**全部原始行**求。字号必须相对本页比较才有意义
-	// （绝对像素值随 dpi、缩放变，没法写死阈值）
+	// 中位字号用全部原始行求：绝对像素值随 dpi/缩放变化，只能相对本页比较。
 	heights := make([]float32, 0, len(lines))
 	for _, l := range lines {
 		if l.Height > 0 {
@@ -126,9 +116,7 @@ func candidateRanking(lines []ocrLine, frameW, frameH int) *ranking {
 	if r.medianH <= 0 {
 		return r
 	}
-	// 正文段落判定：必须用**全部原始行**——正文折行的某一行可能因为太长/太短
-	// 而被后面的清洗淘汰，只看存活行会把一段正文看散，凑不够行数就漏判了。
-	// 段落判定是纯几何问题，与"这行能不能当文件名"无关。
+	// 段落判定也必须用全部原始行：只看存活行会把折行的正文看散，凑不够行数就漏判。
 	all := make([]ocrKept, 0, len(lines))
 	bodyAt := make([]bool, len(lines))
 	for _, l := range lines {
@@ -162,8 +150,7 @@ func candidateRanking(lines []ocrLine, frameW, frameH int) *ranking {
 	if len(picks) == 0 {
 		return r
 	}
-	// 判定为正文段落的行整体出局——它们已经不像标题了，留着只会占候选位。
-	// 只有整页都判成正文时才回退使用（宁可给整段，也别一条都不给）。
+	// 正文整段出局；只有整页都判成正文时才回退使用。
 	if nonBody := dropBody(picks); len(nonBody) > 0 {
 		picks = nonBody
 	}
@@ -179,9 +166,7 @@ func candidateRanking(lines []ocrLine, frameW, frameH int) *ranking {
 		r.picks = append(r.picks, picks[i])
 	}
 
-	// 折行分组：长标题折成几行时，先给"拼起来的一条"，再给各段。
-	// 只认上下相邻、字号一致的（与正文段落同一套判据），
-	// 免得把页面两头的孤立行硬拼成一条。
+	// 折行分组：上下相邻、字号一致的几行先拼成一条，再给各段。
 	topOrder := make([]int, len(picks))
 	for i := range topOrder {
 		topOrder[i] = i
@@ -234,10 +219,8 @@ func candidateRanking(lines []ocrLine, frameW, frameH int) *ranking {
 	return r
 }
 
-// markParagraphs 就地标记正文段落行。正文按行折行，特征是**上下相邻的一串**：
-// 字号一致、左边界对齐、行距正常（约为字高的 1.8 倍内）。
-// 三者缺一不可——只比字号和左边界的话，红头、落款、附件这些孤立的行
-// 会被误并进正文。字号明显大于正文的行（标题折行）不参与。
+// markParagraphs 就地标记正文段落：上下相邻、字号一致、左边界对齐、行距正常。
+// 只看其中两项会把孤立的红头/落款误并进正文，所以三者缺一不可。
 func markParagraphs(ks []ocrKept, frameW int, medianH float32) {
 	// 按从上到下取索引（不动原切片顺序）
 	idx := make([]int, len(ks))
@@ -305,8 +288,7 @@ func intAbs(v int) int {
 	return v
 }
 
-// joinTitle 把折行的标题段按顺序拼成一条。中英文之间不留多余空格，
-// 超出长度上限就停在能放下的那一段。
+// joinTitle 把折行的标题段按顺序拼成一条，超长就截断。
 func joinTitle(parts []ocrPick) string {
 	var b strings.Builder
 	prevTop, prevH := float32(-1), float32(0)
@@ -341,9 +323,7 @@ func prepareLine(l ocrLine, frameW, frameH int) (string, bool) {
 	if name == "" || l.Height <= 0 || frameW <= 0 || frameH <= 0 {
 		return "", false
 	}
-	// 字段行（"甲方：某某公司"）取冒号后的值当候选——标签本身对文件名没意义，
-	// 而值（公司名、项目名）往往正好是用户想用的名字。标签过长说明是标题里的
-	// 冒号而不是字段前缀，不动。是否字段行要在剥离前判断。
+	// 字段行（"甲方：某某公司"）取冒号后的值；标签过长说明只是标题里的冒号。
 	if idx := labelColonIndex(name); idx >= 0 && idx <= 6 {
 		if v := strings.TrimSpace(string([]rune(name)[idx+1:])); v != "" {
 			name = v
@@ -376,8 +356,7 @@ func prepareLine(l ocrLine, frameW, frameH int) (string, bool) {
 	return name, true
 }
 
-// rankLine 给清洗后的行打分。medianH 是本页中位字号（相对比较的基准）。
-// 各分项归一到 0..1，权重写在表达式的系数里，改口味就改这一段。
+// rankLine 给清洗后的行打分；各分项归一到 0..1，权重在表达式里。
 func rankLine(k ocrKept, medianH float32, frameW, frameH int) (ocrPick, bool) {
 	l, name := k.line, k.name
 	field := false
@@ -386,8 +365,7 @@ func rankLine(k ocrKept, medianH float32, frameW, frameH int) (ocrPick, bool) {
 	}
 	runes := utf8.RuneCountInString(name)
 
-	// 字号：标题会比正文大一截——这是最强的信号，用"相对本页中位字号"度量，
-	// 免得写死的像素阈值随 dpi/缩放失效。1.0 倍=0 分，1.8 倍及以上=满分。
+	// 字号是标题最强的信号，用相对本页中位字号度量：1.0 倍=0 分，1.8 倍=满分。
 	hScore := clamp01((l.Height/medianH - 1.0) / (1.8 - 1.0))
 	// 位置：越靠上越像标题（权重给低——红头/页眉也在最上面，靠字号压下去）
 	pScore := clamp01(1 - (l.Top/float32(frameH)-0.02)/(0.45-0.02))
@@ -397,8 +375,7 @@ func rankLine(k ocrKept, medianH float32, frameW, frameH int) (ocrPick, bool) {
 	cScore := clamp01((l.Score - 0.60) / (0.95 - 0.60))
 
 	score := 4.0*hScore + 1.5*pScore + 1.0*wScore + 1.0*cScore
-	// 太短（"附件"）不像标题；过长（整段正文）也压一点——但公文标题本就常见
-	// 20-30 字，所以上限放宽到 28，免得把正经标题砍掉
+	// 太短或太长都压分；公文标题常见 20-30 字，所以上限放到 28。
 	switch {
 	case runes < 4:
 		score *= 0.4
@@ -455,9 +432,7 @@ func hasBoilerplate(name string) bool {
 	return false
 }
 
-// normalizeOCRText 把识别文本清成能当文件名的样子：
-// 去非法字符与控制符（`\/:*?"<>|`）、压空白、
-// 去掉汉字之间 OCR 硬塞进来的空格、削掉句末标点。
+// normalizeOCRText 清成能当文件名的样子：去非法字符、压空白、去掉汉字间空格、削句末标点。
 func normalizeOCRText(s string) string {
 	var b strings.Builder
 	for _, r := range s {

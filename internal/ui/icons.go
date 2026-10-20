@@ -12,10 +12,6 @@ func strokeIcon(body string) *ui.SVG {
 }
 
 var (
-	icoPrinter = strokeIcon(
-		`<path d="M7 9V3.5h10V9"/>` +
-			`<rect x="3.5" y="9" width="17" height="7.5" rx="2"/>` +
-			`<path d="M7 14.5h10v6H7z"/>`)
 	icoScan = strokeIcon(
 		`<path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8"/>` +
 			`<path d="M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8"/>` +
@@ -31,7 +27,6 @@ var (
 			`<path d="M6.5 7 7.5 20h9L17.5 7"/><path d="M9 7V4h6v3"/>`)
 	icoRefresh = strokeIcon(
 		`<path d="M20 11a8 8 0 1 0-.8 4.5"/><path d="M20 3.5V10h-6.5"/>`)
-	icoCheck       = strokeIcon(`<path d="m5 12.5 4.5 4.5L19 6.5"/>`)
 	icoCheckCircle = strokeIcon(
 		`<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5.5-6"/>`)
 	icoAlert = strokeIcon(
@@ -42,10 +37,6 @@ var (
 	icoFile = strokeIcon(
 		`<path d="M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8z"/>` +
 			`<path d="M14 3v5h5"/><path d="M8.5 13h7"/><path d="M8.5 17h5"/>`)
-	icoImage = strokeIcon(
-		`<rect x="3" y="3.5" width="18" height="17" rx="2.5"/>` +
-			`<circle cx="8.5" cy="9" r="1.6"/>` +
-			`<path d="m21 15.5-4.5-4.5L5 20.5"/>`)
 	icoGrip = ui.MustParseSVG([]byte(
 		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#000">` +
 			`<circle cx="9" cy="6" r="1.15"/><circle cx="15" cy="6" r="1.15"/>` +

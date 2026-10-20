@@ -1,8 +1,4 @@
-// 设备缓存：上次发现的打印机端点 + 能力，放在 %TEMP% 下的固定目录。
-//
-// 目的只有一个——启动时先把上次的打印机名单显示出来，同时后台做 mDNS 全量发现，
-// 列表到手后无感合并。缓存不是配置：不写注册表、不建用户目录，系统清理临时目录
-// （存储感知/磁盘清理）时随手丢掉也不影响正确性。每次启动都会重新探测与发现。
+// 设备缓存：上次发现的端点 + 能力，放 %TEMP%。只用来加速启动，丢了不影响正确性。
 package scanner
 
 import (
@@ -49,8 +45,7 @@ type cachedDevice struct {
 
 func deviceCachePath() string { return filepath.Join(deviceCacheDir(), "devices.json") }
 
-// LoadCache 读上次的设备名单。任何异常都当成"没有缓存"，
-// 缓存只用于提速，绝不能影响启动或正确性。
+// LoadCache 读上次的设备名单；任何异常都当成"没有缓存"。
 func LoadCache() ([]DeviceInfo, string) {
 	data, err := os.ReadFile(deviceCachePath())
 	if err != nil {
@@ -79,8 +74,7 @@ func LoadCache() ([]DeviceInfo, string) {
 	return out, c.Selected
 }
 
-// SaveCache 原子写入当前名单。空名单不覆盖旧缓存——
-// 发现失败时保留上一次的线索，下次启动仍然可以先显示出来。
+// SaveCache 原子写入当前名单；空名单不覆盖旧缓存，发现失败时还能留下线索。
 func SaveCache(devs []DeviceInfo, selected string) {
 	out := make([]cachedDevice, 0, len(devs))
 	for _, d := range devs {
