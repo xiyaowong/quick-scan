@@ -88,6 +88,22 @@ package: build
     Write-Host ''; \
     Write-Host "打包完成：$zip（$([math]::Round((Get-Item $zip).Length / 1MB, 1)) MB）"
 
+# ── UPX 压缩发布版（可选）──
+# 只用 NRV + --best：体积约减半，启动多 ~0.2 秒。
+# 不要加 --lzma：只再小 1.7MB，启动却多 ~0.8 秒（实测：0.30 → 0.51 → 1.12 秒）。
+# 产物 dist\sscan.exe；根目录的 sscan.exe 保持未压缩，方便排查。
+upx: build
+    if (-not (Get-Command upx -ErrorAction SilentlyContinue)) { throw '未找到 upx：winget install UPX.UPX' }; \
+    New-Item -ItemType Directory -Force dist | Out-Null; \
+    Copy-Item sscan.exe dist\sscan.exe -Force; \
+    $before = (Get-Item dist\sscan.exe).Length; \
+    upx --best --no-progress dist\sscan.exe; \
+    if ($LASTEXITCODE -ne 0) { throw 'UPX 压缩失败' }; \
+    upx -t dist\sscan.exe; \
+    if ($LASTEXITCODE -ne 0) { throw '压缩后完整性校验失败' }; \
+    $after = (Get-Item dist\sscan.exe).Length; \
+    Write-Host ("[upx] {0:N1} MB → {1:N1} MB（{2:N0}%）" -f ($before/1MB), ($after/1MB), (100*$after/$before))
+
 # 清理构建产物
 # 每个目标都先 Test-Path：删不存在的路径会让进程退出码变 1，just 会当成配方失败。
 clean:

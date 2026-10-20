@@ -33,6 +33,7 @@ Windows 10 / 11（64 位）。打印机需要支持 eSCL / AirPrint 扫描，并
 
 ```powershell
 just build      # 产物：sscan.exe
+just upx        # 可选：UPX 压缩发布版（dist\sscan.exe，体积约一半，启动多约 0.2 秒）
 just test       # 单测，不需要真机
 just run        # 构建并启动
 ```
