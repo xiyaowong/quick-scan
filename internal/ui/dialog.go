@@ -237,19 +237,21 @@ func (a *app) exportTargets() []Page {
 
 func (a *app) rotatePage(id uint64) {
 	for i := range a.pages {
-		if a.pages[i].ID == id {
-			a.pages[i].Rot = (a.pages[i].Rot + 90) % 360
-			if full, err := scanner.Decode(a.pages[i].FullPath); err == nil {
-				rot := scanner.Rotate90(full, a.pages[i].Rot)
-				a.pages[i].ThumbRot = thumbnail(rot, 240)
-			}
-			if a.lightbox != nil && a.lightbox.Index == i {
-				a.lightbox.Full = nil
-				a.lightbox.Dirty = true
-				a.requestLightboxImage()
-			}
-			return
+		if a.pages[i].ID != id {
+			continue
 		}
+		p := &a.pages[i]
+		p.Rot = (p.Rot + 90) % 360
+		// 只转 240px 的缩略图。之前在这里解码整张原图再转 800 万像素，
+		// 点击后会卡住一瞬；原图不需要动，导出时按 Rot 现转。
+		if p.ThumbSrc != nil {
+			p.ThumbRot = thumbnail(scanner.Rotate90(p.ThumbSrc, p.Rot), 240)
+		}
+		if a.lightbox != nil && a.lightbox.Index == i {
+			// 灯箱里的图也不重解码，只换渲染角度。
+			a.lightbox.Rot = p.Rot
+		}
+		return
 	}
 }
 
@@ -287,7 +289,7 @@ func (a *app) openLightbox(index int) {
 	if index >= len(a.pages) {
 		return
 	}
-	a.lightbox = &Lightbox{Index: index, Zoom: 1.0, Dirty: true}
+	a.lightbox = &Lightbox{Index: index, Rot: a.pages[index].Rot, Zoom: 1.0, Dirty: true}
 	a.requestLightboxImage()
 }
 
@@ -304,14 +306,11 @@ func (a *app) requestLightboxImage() {
 	}
 	lb.Loading = true
 	lb.Dirty = false
+	lb.Rot = a.pages[lb.Index].Rot
 	path := a.pages[lb.Index].FullPath
-	rot := a.pages[lb.Index].Rot
 	index := lb.Index
 	go func() {
 		full, err := scanner.Decode(path)
-		if err == nil && rot%360 != 0 {
-			full = scanner.Rotate90(full, rot)
-		}
 		Win.Update(func() {
 			lb := a.lightbox
 			if lb == nil || lb.Index != index {
@@ -324,6 +323,7 @@ func (a *app) requestLightboxImage() {
 			}
 			bnd := full.Bounds()
 			lb.ImgW, lb.ImgH = float32(bnd.Dx()), float32(bnd.Dy())
+			// 位图保持未旋转：灯箱按 Rot 渲染，导出/OCR 按 Rot 现转。
 			lb.Full = ui.NewBitmap(full)
 		})
 	}()

@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"image"
+
 	"sscan/internal/scanner"
 
 	"github.com/egoist/mygo/ui"
@@ -64,8 +66,11 @@ type Page struct {
 	ID       uint64     // 全局递增 id（拖拽排序的稳定键）
 	Thumb    *ui.Bitmap // 低清缩略图（240px 级）
 	ThumbRot *ui.Bitmap // 旋转后的展示位图（Rotate 时重烘；nil = 未旋转）
-	Rot      int        // 0/90/180/270
-	FullPath string     // 高清原图（%TEMP% 下，灯箱/导出时才读）
+	// ThumbSrc 是 240px 缩略图的像素，旋转时直接转它。转 240px 只要几十微秒，
+	// 而为了转缩略图去解码 300dpi 原图要几百毫秒。
+	ThumbSrc *image.RGBA
+	Rot      int    // 0/90/180/270：只是渲染参数，导出/OCR 时才烘进像素
+	FullPath string // 高清原图（%TEMP% 下，灯箱/导出时才读）
 }
 
 // 旋转缓存尚未生成时退回原缩略图。
@@ -105,11 +110,12 @@ type ExportDone struct {
 
 type Lightbox struct {
 	Index   int
-	Full    *ui.Bitmap // 当前显示的大图（已按旋转烘焙）
+	Full    *ui.Bitmap // 当前显示的大图（未旋转：转的是元素，不是像素）
 	Loading bool
 	Zoom    float32 // 1.0 = 适配窗口
 	PanX    float32 // 放大后拖动查看的偏移
 	PanY    float32
+	Rot     int  // 展示角度：只在渲染时转，不重解码原图
 	Dirty   bool // 需要重新解码/派生
 
 	// 删除是破坏性操作，先在这一页上问一次，不弹整窗对话框。
@@ -139,18 +145,56 @@ func (lb *Lightbox) zoomBy(f float32) {
 	lb.clampPan()
 }
 
+// 图框的上下留白与左右留白，与 lightboxOverlay 里的 Padding 一致：
+// 算显示尺寸要用内容区，而不是整块图框。
+const (
+	lbPadTop  float32 = 8
+	lbPadSide float32 = 44
+)
+
+func (lb *Lightbox) contentBox() ui.Rect {
+	r := lb.row
+	return ui.Rect{
+		X: r.X + lbPadSide,
+		Y: r.Y + lbPadTop,
+		W: r.W - 2*lbPadSide,
+		H: r.H - 2*lbPadTop,
+	}
+}
+
+// displaySize 是图片（含旋转）在图框里占的宽高。
+func (lb *Lightbox) displaySize() (w, h float32) {
+	box := lb.contentBox()
+	iw, ih := lb.ImgW, lb.ImgH
+	if lb.Rot%180 != 0 {
+		iw, ih = ih, iw // 转 90°/270° 后宽高互换
+	}
+	if box.W <= 0 || box.H <= 0 || iw <= 0 || ih <= 0 {
+		return 0, 0
+	}
+	s := min(box.W/iw, box.H/ih)
+	return iw * s, ih * s
+}
+
 // contentRect 是图片真正画出来的地方；点黑边应该关灯箱。
 func (lb *Lightbox) contentRect() ui.Rect {
 	box := lb.img
-	if box.W <= 0 || box.H <= 0 || lb.ImgW <= 0 || lb.ImgH <= 0 {
+	if box.W <= 0 || box.H <= 0 {
 		return ui.Rect{}
 	}
 	if lb.Zoom > 1 {
 		return box
 	}
-	s := min(box.W/lb.ImgW, box.H/lb.ImgH)
-	w, h := lb.ImgW*s, lb.ImgH*s
-	return ui.Rect{X: box.X + (box.W-w)/2, Y: box.Y + (box.H-h)/2, W: w, H: h}
+	w, h := lb.ImgW, lb.ImgH
+	if lb.Rot%180 != 0 {
+		w, h = h, w
+	}
+	if w <= 0 || h <= 0 {
+		return ui.Rect{}
+	}
+	s := min(box.W/w, box.H/h)
+	cw, ch := w*s, h*s
+	return ui.Rect{X: box.X + (box.W-cw)/2, Y: box.Y + (box.H-ch)/2, W: cw, H: ch}
 }
 
 func (lb *Lightbox) clampPan() {

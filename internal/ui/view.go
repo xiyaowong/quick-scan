@@ -558,19 +558,43 @@ func (a *app) lightboxOverlay(c *ui.Context, t *ui.Theme) {
 			// Fill + Contain 把原图压进窗口，放大后再偏移查看。
 			imgRow := ui.Row(c).Grow(1).MinHeight(0).Center().Padding(8, 44, 8, 44).Clip()
 			imgRow.Children(func() {
-				if lb.Full != nil {
-					img := ui.Image(c, lb.Full).Fill().Fit(ui.Contain).Radius(3).
-						Shadow(0, 24, 60, 0, ui.RGBA(0, 0, 0, 0.5))
-					if lb.Zoom > 1.0 || lb.PanX != 0 || lb.PanY != 0 {
-						img.Translate(lb.PanX, lb.PanY).Scale(lb.Zoom, lb.Zoom)
-					}
-					// 灯箱层和内容区都从客户区顶部算起，Bounds 直接可用。
-					lb.img = img.Bounds()
-				} else {
+				if lb.Full == nil {
 					ui.Column(c).Gap(10).Center().Children(func() {
 						ui.Spinner(c).FontSize(18).TextColor(white(0.7))
 						ui.Text(c, "正在打开 …").FontSize(12).TextColor(white(0.55))
 					})
+					return
+				}
+				w, h := lb.displaySize()
+				if w <= 0 || h <= 0 { // 图框还没量过：先铺满，下一帧再按旋转后的大小摆
+					lb.img = ui.Image(c, lb.Full).Fill().Fit(ui.Contain).Radius(3).Bounds()
+					return
+				}
+				// 旋转只转里面的图：纸面留在窗口坐标里，阴影和拖拽偏移才不会被转歪。
+				paper := ui.Row(c).Size(w, h).Center().
+					Shadow(0, 24, 60, 0, ui.RGBA(0, 0, 0, 0.5))
+				if lb.Zoom > 1.0 || lb.PanX != 0 || lb.PanY != 0 {
+					paper.Translate(lb.PanX, lb.PanY).Scale(lb.Zoom, lb.Zoom)
+				}
+				paper.Children(func() {
+					img := ui.Image(c, lb.Full).Fit(ui.Contain).Radius(3).Shrink(0)
+					// 转 90°/270° 后宽高互换，所以先按未旋转的边长摆满再转过来。
+					if lb.Rot%180 != 0 {
+						img.Size(h, w)
+					} else {
+						img.Fill()
+					}
+					if r := lb.Rot % 360; r != 0 {
+						img.Rotate(float32(r))
+					}
+				})
+				// 图片区域按摆位算，不用 Bounds：Bounds 是上一帧的，刚转完会慢一帧。
+				cb := lb.contentBox()
+				lb.img = ui.Rect{
+					X: cb.X + cb.W/2 + lb.Zoom*lb.PanX - lb.Zoom*w/2,
+					Y: cb.Y + cb.H/2 + lb.Zoom*lb.PanY - lb.Zoom*h/2,
+					W: lb.Zoom * w,
+					H: lb.Zoom * h,
 				}
 			})
 			lb.row = imgRow.Bounds()

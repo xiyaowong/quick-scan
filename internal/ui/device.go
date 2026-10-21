@@ -8,6 +8,8 @@ import (
 
 	"sscan/internal/platform"
 	"sscan/internal/scanner"
+
+	"github.com/egoist/mygo/ui"
 )
 
 // startup 先用缓存显示上次的设备并验证，同时后台跑 mDNS 发现。
@@ -458,9 +460,11 @@ func (a *app) addPage(path string) {
 		a.scanStatus = "扫描结果读取失败：" + err.Error()
 		return
 	}
+	src := thumbRGBA(full, 240)
 	p := Page{
 		ID:       a.nextPageID,
-		Thumb:    thumbnail(full, 240),
+		Thumb:    ui.NewBitmap(src),
+		ThumbSrc: src,
 		Rot:      0,
 		FullPath: path,
 	}
