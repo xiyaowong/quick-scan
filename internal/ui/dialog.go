@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"quick-scan/internal/platform"
 	"quick-scan/internal/scanner"
 
 	"github.com/egoist/mygo"
@@ -160,6 +161,40 @@ func (a *app) exportDoneView(c *ui.Context, t *ui.Theme) {
 	})
 }
 
+// recoverDialog 上次异常退出时，临时目录里还留着扫描页。
+// 必须让用户明确选恢复或丢弃，点窗外/Esc 都不关：误关一下数据就没了。
+func (a *app) recoverDialog(c *ui.Context, t *ui.Theme) {
+	n := len(a.recoverPages)
+	open := true
+	ui.Modal(c, &open, func() {
+		card := ui.Column(c).Width(432).Background(colPanel).Border(1, colLine).
+			Radius(18).Clip().Shadow(0, 28, 70, 0, shadowStrong)
+		card.Children(func() {
+			ui.Row(c).Padding(22, 24, 0, 24).Gap(13).AlignItems(ui.Start).Children(func() {
+				badge := ui.Row(c).Size(40, 40).Radius(12).Background(colAccentSoft).Center().Shrink(0)
+				badge.Children(func() {
+					ui.Icon(c, icoScan).FontSize(19).TextColor(colAccent)
+				})
+				ui.Column(c).Gap(6).Children(func() {
+					ui.Text(c, "发现上次未完成的扫描").FontSize(15.5).FontWeight(600).TextColor(colInk)
+					ui.Text(c, fmt.Sprintf("还有 %d 页可以恢复。恢复后可以继续查看、旋转和导出。", n)).
+						FontSize(12.5).TextColor(colMuted).LineHeight(1.55)
+				})
+			})
+			ui.Row(c).Padding(20, 24, 20, 24).Justify(ui.End).Gap(9).Children(func() {
+				if styledButton(c, "丢弃", nil, toneGhost, false).Height(38).Padding(0, 18, 0, 18).Clicked() {
+					platform.ClearSession()
+					a.recoverPages = nil
+					a.dlg = DlgNone
+				}
+				if styledButton(c, "恢复 "+itoa(n)+" 页", nil, tonePrimary, false).Height(38).Padding(0, 20, 0, 20).Clicked() {
+					a.restoreSession()
+				}
+			})
+		})
+	})
+}
+
 func (a *app) runExport() {
 	if a.exportPicking {
 		return
@@ -257,6 +292,7 @@ func (a *app) rotatePage(id uint64) {
 			// 灯箱里的图也不重解码，只换渲染角度。
 			a.lightbox.Rot = p.Rot
 		}
+		a.saveSession()
 		return
 	}
 }
@@ -290,6 +326,7 @@ func (a *app) deletePage(id uint64) {
 		}
 	}
 	a.scanStatus = ""
+	a.saveSession()
 }
 
 func (a *app) openLightbox(index int) {

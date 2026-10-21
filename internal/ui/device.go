@@ -493,7 +493,7 @@ func (a *app) applyDefaults(li int) {
 
 // startScan 开始一次扫描（后台跑 eSCL）。
 func (a *app) startScan() {
-	if a.scanning || a.devState != DevOnline {
+	if a.scanning || a.restoring || a.devState != DevOnline {
 		return
 	}
 	a.scanning = true
@@ -516,42 +516,85 @@ func (a *app) startScan() {
 	a.saveCache() // 用户真正用起来的设备，下次启动优先显示
 
 	go func() {
-		files, err := scanner.Scan(context.Background(), &dev, opts, dir, func(f float64) {
+		_, err := scanner.Scan(context.Background(), &dev, opts, dir, func(f float64) {
 			Win.Update(func() { a.scanProgress = f })
+		}, func(path string) {
+			// 每下完一页就解码缩略图并登记，整批扫完前崩溃也不丢已扫的页。
+			p, perr := makePage(path, 0)
+			Win.Update(func() {
+				if perr != nil {
+					a.scanStatus = "扫描结果读取失败：" + perr.Error()
+					return
+				}
+				a.appendPage(p)
+			})
 		})
 		Win.Update(func() {
 			a.scanning = false
 			if err != nil {
 				a.scanStatus = err.Error()
-				return
-			}
-			for _, f := range files {
-				a.addPage(f)
 			}
 		})
 	}()
 }
 
-// addPage 扫描完成 → 解码缩略图 → 追加进页面区
-func (a *app) addPage(path string) {
+// makePage 解码原图并生成缩略图。耗时，调用方负责放到后台线程。
+func makePage(path string, rot int) (Page, error) {
 	full, err := scanner.Decode(path)
 	if err != nil {
-		a.scanStatus = "扫描结果读取失败：" + err.Error()
-		return
+		return Page{}, err
 	}
 	src := thumbRGBA(full, 240)
 	p := Page{
-		ID:       a.nextPageID,
 		Thumb:    ui.NewBitmap(src),
 		ThumbSrc: src,
-		Rot:      0,
+		Rot:      rot,
 		FullPath: path,
 	}
-	a.pages = append(a.pages, p)
+	if rot%360 != 0 {
+		p.ThumbRot = thumbnail(scanner.Rotate90(src, rot), 240)
+	}
+	return p, nil
+}
+
+// appendPage 只能在主线程调：登记一页就立刻写会话清单，崩溃后能恢复到这里。
+func (a *app) appendPage(p Page) {
+	p.ID = a.nextPageID
 	a.nextPageID++
+	a.pages = append(a.pages, p)
 	// 缩略图当场出现、页数在左栏标题里，不必再用文字报一遍
 	a.scanStatus = ""
 	if len(a.pages) == 1 {
 		a.startOCRSuggest()
 	}
+	a.saveSession()
+}
+
+// restoreSession 把上次崩溃遗留的页面逐页解码回界面。
+// 解码放后台，页面按清单顺序一页页出现，不在 UI 线程批量卡住。
+func (a *app) restoreSession() {
+	pages := a.recoverPages
+	a.recoverPages = nil
+	a.dlg = DlgNone
+	if len(pages) == 0 {
+		return
+	}
+	a.restoring = true
+	a.scanStatus = "正在恢复上次的扫描页面 …"
+	Win.Update(func() {})
+	go func() {
+		for _, sp := range pages {
+			p, err := makePage(platform.PagePath(sp.File), sp.Rot)
+			Win.Update(func() {
+				if err == nil {
+					a.appendPage(p)
+				}
+			})
+		}
+		Win.Update(func() {
+			a.restoring = false
+			a.scanStatus = ""
+			a.saveSession()
+		})
+	}()
 }

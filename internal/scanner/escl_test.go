@@ -320,7 +320,7 @@ func TestProbeAndScanPlaten(t *testing.T) {
 
 	dir := t.TempDir()
 	files, err := Scan(context.Background(), &d,
-		Options{Color: ColorModeColor, DPI: 300, Size: PaperA4, Intent: "Photo"}, dir, nil)
+		Options{Color: ColorModeColor, DPI: 300, Size: PaperA4, Intent: "Photo"}, dir, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +349,7 @@ func TestScanReportsProgress(t *testing.T) {
 	var got []float64
 	files, err := Scan(context.Background(), &d,
 		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, t.TempDir(),
-		func(f float64) { got = append(got, f) })
+		func(f float64) { got = append(got, f) }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,10 +376,20 @@ func TestScanADFMultiplePages(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
+	var seen []string
 	files, err := Scan(context.Background(), &d,
-		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, dir, nil)
+		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, dir, nil,
+		func(path string) { seen = append(seen, path) })
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(seen) != 3 {
+		t.Fatalf("逐页回调 %d 次，want 3", len(seen))
+	}
+	for _, p := range seen {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("回调时文件还没落盘: %v", err)
+		}
 	}
 	if len(files) != 3 {
 		t.Fatalf("ADF pages = %d, want 3", len(files))

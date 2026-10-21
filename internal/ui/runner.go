@@ -2,6 +2,8 @@
 package ui
 
 import (
+	"quick-scan/internal/platform"
+
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
@@ -12,7 +14,15 @@ var Win *mygo.Window
 // App 主程序实例。
 type App struct{ a *app }
 
-func New() *App { return &App{a: newApp()} }
+// New 创建实例；上次异常退出留下的会话在这里转成待恢复状态。
+func New() *App {
+	a := newApp()
+	if pages, ok := platform.LoadSession(); ok {
+		a.recoverPages = pages
+		a.dlg = DlgRecover
+	}
+	return &App{a: a}
+}
 
 // View mygo 每帧调用的视图函数。
 func (r *App) View(c *ui.Context) { r.a.view(c) }
@@ -22,8 +32,14 @@ func (r *App) Startup() { r.a.startup() }
 
 // CloseAllowed 没有未导出的页面，或用户已确认退出。
 func (r *App) CloseAllowed() bool {
-	return r.a.quitConfirmed || len(r.a.pages) == 0
+	return r.a.quitConfirmed || r.a.pageCount() == 0
 }
 
-// AskQuit 有未导出页面时弹一次确认。
-func (r *App) AskQuit() { r.a.dlg = DlgQuitConfirm }
+// AskQuit 有未导出页面时弹一次确认；待恢复的页面先让用户决定去留。
+func (r *App) AskQuit() {
+	if len(r.a.recoverPages) > 0 {
+		r.a.dlg = DlgRecover
+		return
+	}
+	r.a.dlg = DlgQuitConfirm
+}

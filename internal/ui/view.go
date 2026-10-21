@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"quick-scan/internal/platform"
 	"quick-scan/internal/scanner"
 
 	"github.com/egoist/mygo/plugins/loading"
@@ -380,12 +381,14 @@ func (a *app) sourceField(c *ui.Context) {
 
 func (a *app) scanButton(c *ui.Context, t *ui.Theme) {
 	off := a.devState != DevOnline
-	busy := a.scanning || a.probing
+	busy := a.scanning || a.probing || a.restoring
 	disabled := off || busy
 	label := "扫　描"
 	switch {
 	case a.probing:
 		label = "连接设备…"
+	case a.restoring:
+		label = "恢复页面…"
 	case a.scanning:
 		label = "扫描中…"
 	}
@@ -437,7 +440,7 @@ func (a *app) scanFeedback(c *ui.Context) {
 }
 
 func (a *app) clearLink(c *ui.Context) {
-	disabled := len(a.pages) == 0 || a.scanning
+	disabled := len(a.pages) == 0 || a.scanning || a.restoring
 	b := ui.ButtonBase(c).Grow(1).Height(38).Radius(8).Disabled(disabled).
 		Transition(ui.ElementTransition{Duration: 120 * time.Millisecond, Colors: true})
 	fg := colMuted
@@ -459,7 +462,7 @@ func (a *app) clearLink(c *ui.Context) {
 }
 
 func (a *app) exportButton(c *ui.Context) {
-	enabled := len(a.pages) > 0 && !a.scanning
+	enabled := len(a.pages) > 0 && !a.scanning && !a.restoring
 	n := a.selectedCount()
 	label := "导出"
 	tip := "PDF 或 JPG，导出全部页面"
@@ -604,9 +607,11 @@ func (a *app) overlays(c *ui.Context, t *ui.Theme) {
 	switch a.dlg {
 	case DlgExport:
 		a.exportDialog(c, t)
+	case DlgRecover:
+		a.recoverDialog(c, t)
 	case DlgQuitConfirm:
 		a.confirmDialog(c, t, "要退出吗？",
-			fmt.Sprintf("还有 %d 页没导出，退出后这些页面就没了。", len(a.pages)),
+			fmt.Sprintf("还有 %d 页没导出，退出后这些页面就没了。", a.pageCount()),
 			"退出", func() {
 				a.quitConfirmed = true
 				a.dlg = DlgNone
@@ -618,6 +623,7 @@ func (a *app) overlays(c *ui.Context, t *ui.Theme) {
 			"清空", func() {
 				a.pages = nil
 				a.clearSelection()
+				platform.ClearSession()
 				a.dlg = DlgNone
 			})
 	}

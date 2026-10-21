@@ -430,7 +430,9 @@ type Options struct {
 
 // 失败时 DELETE 掉任务。progress 拿到的是 0..1 的估算进度：设备只报“扫完没有”，
 // 不报扫到第几行，细处靠时间和下载字节数推。
-func Scan(ctx context.Context, d *DeviceInfo, opts Options, dir string, progress func(float64)) ([]string, error) {
+// onPage 在扫描 goroutine 里每落盘一页调一次：界面不用等整批扫完才拿到页面，
+// 扫描中途崩溃也不会丢掉已经下完的页。
+func Scan(ctx context.Context, d *DeviceInfo, opts Options, dir string, progress func(float64), onPage func(string)) ([]string, error) {
 	report := func(f float64) {
 		if progress != nil {
 			progress(f)
@@ -500,6 +502,9 @@ func Scan(ctx context.Context, d *DeviceInfo, opts Options, dir string, progress
 			return nil, fmt.Errorf("保存扫描页失败：%w", err)
 		}
 		files = append(files, path)
+		if onPage != nil {
+			onPage(path)
+		}
 		if !opts.Feeder {
 			break // 玻璃板一次一张
 		}

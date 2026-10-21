@@ -2,7 +2,9 @@ package ui
 
 import (
 	"image"
+	"path/filepath"
 
+	"quick-scan/internal/platform"
 	"quick-scan/internal/scanner"
 
 	"github.com/egoist/mygo/ui"
@@ -70,7 +72,7 @@ type Page struct {
 	// 而为了转缩略图去解码 300dpi 原图要几百毫秒。
 	ThumbSrc *image.RGBA
 	Rot      int    // 0/90/180/270：只是渲染参数，导出/OCR 时才烘进像素
-	FullPath string // 高清原图（%TEMP% 下，灯箱/导出时才读）
+	FullPath string // 高清原图（%TEMP% 会话目录下，灯箱/导出时才读）
 }
 
 // 旋转缓存尚未生成时退回原缩略图。
@@ -91,6 +93,7 @@ const (
 	DlgExport
 	DlgQuitConfirm
 	DlgClearConfirm
+	DlgRecover
 )
 
 type ExportPhase int
@@ -240,8 +243,13 @@ type app struct {
 	pendingDelete uint64
 
 	scanning     bool
+	restoring    bool // 正在把上次崩溃遗留的页面解码回界面
 	scanStatus   string
 	scanProgress float64 // 0..1 的估算进度：设备只报扫完没有，细节靠时间和字节数推
+
+	// recoverPages 是上次异常退出留下的页面清单；用户选恢复前只占着位置，
+	// 不建缩略图也不进 pages，免得恢复到一半又把半份数据当成正常状态。
+	recoverPages []platform.SessionPage
 
 	dlg DialogKind
 
@@ -364,6 +372,7 @@ func (a *app) movePages(rows []int, to int) {
 	if a.lightbox != nil {
 		a.lightbox.Dirty = true
 	}
+	a.saveSession()
 }
 
 func (a *app) isSelected(id uint64) bool { return a.selected[id] }
@@ -379,6 +388,21 @@ func (a *app) toggleSelected(id uint64) {
 func (a *app) selectedCount() int { return len(a.selected) }
 
 func (a *app) clearSelection() { clear(a.selected) }
+
+// pageCount 含尚未决定是否恢复的页面：关窗确认不能把这份数据漏掉。
+func (a *app) pageCount() int { return len(a.pages) + len(a.recoverPages) }
+
+// saveSession 记录页序和旋转。图片本身已经落在会话目录，崩溃后据此还原。
+func (a *app) saveSession() {
+	if Win == nil {
+		return // 单元测试不碰真实临时目录
+	}
+	pages := make([]platform.SessionPage, 0, len(a.pages))
+	for _, p := range a.pages {
+		pages = append(pages, platform.SessionPage{File: filepath.Base(p.FullPath), Rot: p.Rot})
+	}
+	platform.SaveSession(pages)
+}
 
 func (a *app) selectAll() {
 	for _, p := range a.pages {

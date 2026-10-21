@@ -36,6 +36,12 @@ func run() (err error) {
 		}
 	}()
 
+	// 会话目录固定一份，不能让第二个实例共用（否则谁正常退出谁把它删掉）。
+	// 后启动的实例把命令行交给前一个，然后直接退出。
+	if !mygo.App.RequestSingleInstanceLock() {
+		return nil
+	}
+
 	platform.CleanupStale()
 	if err := platform.EnsureAssets(); err != nil {
 		return err
