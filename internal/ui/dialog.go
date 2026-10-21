@@ -13,6 +13,8 @@ import (
 )
 
 func (a *app) openExport(single int) {
+	// 灯箱的遮罩会盖住导出对话框（overlays 里有灯箱就只画灯箱），先收起来。
+	a.closeLightbox()
 	a.exportSingle = single
 	a.exportPhase = PhaseIdle
 	a.exportFmt = ExportPDF

@@ -573,6 +573,65 @@ func (a *app) lightboxOverlay(c *ui.Context, t *ui.Theme) {
 					})
 				}
 			})
+			lb.row = imgRow.Bounds()
+
+			// 拖拽/缩放只挂在内容区：挂在遮罩上会把按下事件抢走，里面的按钮就收不到点击。
+			imgRow.HandleInput(func(ev ui.InputEvent) bool {
+				switch ev.Kind {
+				case ui.InputScroll:
+					lb.zoomBy(1 - ev.DY*0.0015)
+					return true
+				case ui.InputPointerDown:
+					// 事件坐标相对内容区，contentRect 用的是窗口坐标。
+					r := lb.contentRect()
+					inImage := r.W > 0 && r.Contains(ev.X+lb.row.X, ev.Y+lb.row.Y)
+					if ev.Button != 0 || !inImage {
+						return false // 没按在图上：交给遮罩当普通点击，按钮也才收得到
+					}
+					if ev.Clicks >= 2 {
+						lb.resetView()
+						return true
+					}
+					lb.dragging = true
+					lb.dragX, lb.dragY = ev.X, ev.Y
+					lb.panStartX, lb.panStartY = lb.PanX, lb.PanY
+					return true
+				case ui.InputPointerMove:
+					if !lb.dragging {
+						return false
+					}
+					dx, dy := ev.X-lb.dragX, ev.Y-lb.dragY
+					if lb.Zoom > 1.0 {
+						lb.PanX, lb.PanY = lb.panStartX+dx, lb.panStartY+dy
+						lb.clampPan()
+					}
+					return true
+				case ui.InputPointerUp:
+					if !lb.dragging {
+						return false
+					}
+					lb.dragging = false
+					return true
+				}
+				return false
+			})
+
+			// 点遮罩空白处：正在确认删除就先撤回，否则关灯箱。
+			if back.Clicked() {
+				if lb.ConfirmDelete {
+					lb.ConfirmDelete = false
+				} else {
+					a.closeLightbox()
+				}
+			}
+
+			back.HandleInput(func(ev ui.InputEvent) bool {
+				if ev.Kind == ui.InputScroll { // 指针不在内容区时也要能缩放
+					lb.zoomBy(1 - ev.DY*0.0015)
+					return true
+				}
+				return false
+			})
 
 			ui.Row(c).Height(72).Padding(0, 20, 0, 16).AlignItems(ui.Center).Children(func() {
 				ui.Row(c).Width(210)
@@ -616,56 +675,6 @@ func (a *app) lightboxOverlay(c *ui.Context, t *ui.Theme) {
 					}
 				})
 			})
-		})
-
-		back.HandleInput(func(ev ui.InputEvent) bool {
-			switch ev.Kind {
-			case ui.InputScroll:
-				lb.zoomBy(1 - ev.DY*0.0015)
-				return true
-			case ui.InputPointerDown:
-				if ev.Button != 0 {
-					return false
-				}
-				lb.dragging = true
-				rect := lb.contentRect()
-				lb.dragIn = rect.W > 0 && rect.Contains(ev.X, ev.Y)
-				lb.dragMoved = false
-				lb.dragX, lb.dragY = ev.X, ev.Y
-				lb.panStartX, lb.panStartY = lb.PanX, lb.PanY
-				if lb.dragIn && ev.Clicks >= 2 {
-					lb.resetView()
-					lb.dragIn = false
-				}
-				return true
-			case ui.InputPointerMove:
-				if !lb.dragging {
-					return false
-				}
-				dx, dy := ev.X-lb.dragX, ev.Y-lb.dragY
-				if !lb.dragMoved && dx*dx+dy*dy > 9 {
-					lb.dragMoved = true
-				}
-				if lb.dragIn && lb.Zoom > 1.0 {
-					lb.PanX, lb.PanY = lb.panStartX+dx, lb.panStartY+dy
-					lb.clampPan()
-				}
-				return true
-			case ui.InputPointerUp:
-				if !lb.dragging {
-					return false
-				}
-				lb.dragging = false
-				if lb.ConfirmDelete {
-					if !lb.dragMoved && !lb.dragIn {
-						lb.ConfirmDelete = false
-					}
-				} else if !lb.dragMoved && !lb.dragIn {
-					a.closeLightbox()
-				}
-				return true
-			}
-			return false
 		})
 
 		if back.OverlayShortcut(0, ui.KeyEscape) {

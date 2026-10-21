@@ -116,10 +116,9 @@ type Lightbox struct {
 	ConfirmDelete bool
 
 	ImgW, ImgH float32 // 原图像素尺寸，用来算 Contain 后真正占的区域
-	img        ui.Rect // 上一帧图片容器的区域（灯箱层坐标）
+	img        ui.Rect // 上一帧图片容器的区域（窗口坐标）
+	row        ui.Rect // 上一帧内容区的区域：输入事件坐标相对它
 	dragging   bool
-	dragIn     bool // 按下时是否落在图片上
-	dragMoved  bool
 	dragX      float32
 	dragY      float32
 	panStartX  float32
