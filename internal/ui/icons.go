@@ -48,4 +48,5 @@ var (
 			`<circle cx="12" cy="12" r="3"/>`)
 	icoPlus  = strokeIcon(`<path d="M12 5v14"/><path d="M5 12h14"/>`)
 	icoMinus = strokeIcon(`<path d="M5 12h14"/>`)
+	icoCheck = strokeIcon(`<path d="m5 12.5 4.5 4.5L19 7"/>`)
 )

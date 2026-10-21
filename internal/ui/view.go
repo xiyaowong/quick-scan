@@ -52,9 +52,20 @@ func statusColor(s DevState) ui.Color {
 
 func (a *app) pagesPanel(c *ui.Context, t *ui.Theme) {
 	ui.Column(c).Grow(1).MinWidth(0).Padding(18, 18, 18, 14).Gap(14).Children(func() {
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
 			ui.Text(c, "扫描页面").FontSize(19).FontWeight(600).TextColor(colInk)
 			ui.Row(c).Grow(1)
+			if n := a.selectedCount(); n > 0 {
+				ui.Text(c, "已选 "+itoa(n)+" 页").FontSize(12).FontWeight(500).TextColor(colAccent)
+				if n < len(a.pages) && textLink(c, "全选").Clicked() {
+					a.selectAll()
+				}
+				if textLink(c, "取消选择").Clicked() {
+					a.clearSelection()
+				}
+			} else if len(a.pages) > 1 && textLink(c, "全选").Clicked() {
+				a.selectAll()
+			}
 			countBadge(c, len(a.pages))
 		})
 
@@ -69,7 +80,11 @@ func (a *app) pagesPanel(c *ui.Context, t *ui.Theme) {
 
 		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, icoGrip).FontSize(12).TextColor(colFaint)
-			ui.Text(c, "点一下看大图 · 拖动可排序").FontSize(11).TextColor(colMuted)
+			hint := "点一下看大图 · 拖动可排序"
+			if n := a.selectedCount(); n > 0 {
+				hint = "导出时只导出勾选的 " + itoa(n) + " 页"
+			}
+			ui.Text(c, hint).FontSize(11).TextColor(colMuted)
 		})
 	})
 }
@@ -121,6 +136,7 @@ func (a *app) pageCell(c *ui.Context, t *ui.Theme, i int) {
 			ui.Text(c, padPage(i+1)).FontSize(9.5).FontWeight(600).
 				TextColor(ui.RGB(255, 255, 255))
 		})
+		a.selectToggle(c, i+1, p.ID)
 		hairline(c)
 		ui.Row(c).Height(42).Padding(0, 8, 0, 8).AlignItems(ui.Center).Gap(2).Children(func() {
 			ui.Icon(c, icoGrip).FontSize(11).TextColor(colFaint).Tooltip("按住拖动排序")
@@ -143,6 +159,32 @@ func (a *app) pageCell(c *ui.Context, t *ui.Theme, i int) {
 }
 
 func padPage(n int) string { return fmt.Sprintf("%02d", n) }
+
+// 勾选按钮单独占右上角：卡片本身的点击是看大图，勾选不能抢这个手势。
+func (a *app) selectToggle(c *ui.Context, num int, id uint64) {
+	on := a.isSelected(id)
+	cb := ui.CheckboxBase(c, &on).Absolute().Right(8).Top(8).Size(24, 24).Radius(12).Center().
+		Label("勾选第 " + itoa(num) + " 页").Tooltip("勾选后可只导出这些页").
+		Transition(ui.ElementTransition{Duration: 120 * time.Millisecond, Colors: true})
+	switch {
+	case on:
+		cb.Background(colAccent)
+	case cb.Hovered():
+		cb.Background(ui.RGBA(255, 255, 255, 0.98)).Border(1, colAccent)
+	default:
+		cb.Background(ui.RGBA(255, 255, 255, 0.9)).Border(1, colLine)
+	}
+	fg := colMuted
+	if on {
+		fg = ui.RGB(255, 255, 255)
+	}
+	cb.Children(func() {
+		ui.Icon(c, icoCheck).FontSize(13).TextColor(fg)
+	})
+	if cb.Changed() {
+		a.toggleSelected(id)
+	}
+}
 
 func (a *app) settingsPanel(c *ui.Context, t *ui.Theme) {
 	ui.Column(c).Width(railWidth).Padding(0, 18, 18, 18).Children(func() {
@@ -387,8 +429,15 @@ func (a *app) clearLink(c *ui.Context) {
 
 func (a *app) exportButton(c *ui.Context) {
 	enabled := len(a.pages) > 0 && !a.scanning
-	b := styledButton(c, "导出", icoDownload, toneOutline, !enabled).Grow(1).Height(38)
-	b.Tooltip("PDF 或 JPG，导出全部页面")
+	n := a.selectedCount()
+	label := "导出"
+	tip := "PDF 或 JPG，导出全部页面"
+	if n > 0 {
+		label = "导出选中"
+		tip = "PDF 或 JPG，只导出勾选的 " + itoa(n) + " 页"
+	}
+	b := styledButton(c, label, icoDownload, toneOutline, !enabled).Grow(1).Height(38)
+	b.Tooltip(tip)
 	if b.Clicked() {
 		a.openExport(-1)
 	}
@@ -476,6 +525,7 @@ func (a *app) overlays(c *ui.Context, t *ui.Theme) {
 			fmt.Sprintf("共 %d 页，清空后无法恢复。", len(a.pages)),
 			"清空", func() {
 				a.pages = nil
+				a.clearSelection()
 				a.dlg = DlgNone
 			})
 	}

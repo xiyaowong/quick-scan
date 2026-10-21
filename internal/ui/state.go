@@ -234,6 +234,8 @@ type app struct {
 	pages      []Page
 	nextPageID uint64
 	pageGrid   ui.GridState
+	// selected 是勾选导出的页面，按 ID 记：排序/删除后不会错位到别的页。
+	selected map[uint64]bool
 
 	scanning     bool
 	scanStatus   string
@@ -270,6 +272,7 @@ func newApp() *app {
 		intent:       scanner.DefaultIntent,
 		color:        ColorColor,
 		nextPageID:   1,
+		selected:     map[uint64]bool{},
 		exportSingle: -1,
 	}
 	a.pageGrid.Reorder = func(rows []int, to int) { a.movePages(rows, to) }
@@ -359,6 +362,40 @@ func (a *app) movePages(rows []int, to int) {
 	if a.lightbox != nil {
 		a.lightbox.Dirty = true
 	}
+}
+
+func (a *app) isSelected(id uint64) bool { return a.selected[id] }
+
+func (a *app) toggleSelected(id uint64) {
+	if a.selected[id] {
+		delete(a.selected, id)
+		return
+	}
+	a.selected[id] = true
+}
+
+func (a *app) selectedCount() int { return len(a.selected) }
+
+func (a *app) clearSelection() { clear(a.selected) }
+
+func (a *app) selectAll() {
+	for _, p := range a.pages {
+		a.selected[p.ID] = true
+	}
+}
+
+// selectedPages 按页面顺序返回，导出的页序才和界面上看到的一致。
+func (a *app) selectedPages() []Page {
+	if len(a.selected) == 0 {
+		return nil
+	}
+	out := make([]Page, 0, len(a.selected))
+	for _, p := range a.pages {
+		if a.selected[p.ID] {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func pageLabel(i int) string { return "第 " + itoa(i+1) + " 页" }
