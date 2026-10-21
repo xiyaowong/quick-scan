@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"sscan/internal/scanner"
+	"quick-scan/internal/scanner"
 
 	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/ui"

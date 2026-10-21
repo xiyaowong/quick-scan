@@ -1,6 +1,6 @@
 # quick-scan 构建管理（Windows 64 位，Go + mygo 原生 UI）
 #
-# 单一产物 sscan.exe：mygo UI + eSCL 客户端 + 内嵌 OCR 模型。
+# 单一产物 quick-scan.exe：mygo UI + eSCL 客户端 + 内嵌 OCR 模型。
 # 扫描走局域网 eSCL（HTTP），不需要厂商 TWAIN/WIA 驱动，也没有子进程。
 #
 # ── 写配方前必读的两条 just/pwsh 坑 ──────────────────────────────
@@ -26,10 +26,11 @@ ocr:
     Write-Host '[ocr] ocrbridge.lib 完成'
 
 # ── 2. 生成 Windows 资源（exe 图标 + 版本信息）──
-# windres 把 app.rc 编成 COFF 对象；放到 main 包目录（cmd/sscan）里，
+# windres 把 app.rc 编成 COFF 对象；放到 main 包目录（cmd/quick-scan）里，
 # Go 的内部链接器会自动带上。app.rc 必须保持 UTF-8 BOM（无 BOM 时 rc 静默失败）。
+# --codepage=65001：windres 默认按系统 ANSI 读源码，中文会变成一串 GBK 乱码写进资源。
 icon:
-    windres -i app.rc -o cmd\sscan\rsrc_windows_amd64.syso -O coff --target=pe-x86-64; \
+    windres -i app.rc -o cmd\quick-scan\rsrc_windows_amd64.syso -O coff --target=pe-x86-64 --codepage=65001; \
     if ($LASTEXITCODE -ne 0) { throw 'windres 编资源失败' }; \
     Write-Host '[icon] rsrc_windows_amd64.syso 完成'
 
@@ -43,14 +44,14 @@ ui: icon ocr
     $env:CGO_ENABLED = '1'; \
     $env:GOARCH = 'amd64'; \
     if (-not $env:CC) { $env:CC = if (Get-Command clang -ErrorAction SilentlyContinue) { (Get-Command clang).Source } else { 'D:\Scoop\apps\llvm\current\bin\clang.exe' } }; \
-    go build -trimpath -tags mygo_noinspector -ldflags '-s -w' -o sscan.exe ./cmd/sscan; \
+    go build -trimpath -tags mygo_noinspector -ldflags '-s -w' -o quick-scan.exe ./cmd/quick-scan; \
     if ($LASTEXITCODE -ne 0) { throw '主程序编译失败' }; \
-    Write-Host '[ui] sscan.exe 完成'
+    Write-Host '[ui] quick-scan.exe 完成'
 
 # 全量构建
 build: ui
     @Write-Host ''
-    @Write-Host '完成：sscan.exe（64 位单文件：含 OCR 模型）'
+    @Write-Host '完成：quick-scan.exe（64 位单文件：含 OCR 模型）'
 
 # 快速类型检查 + 单测。默认走无 cgo 的 stub 路径（不需要 Rust 库）；
 # `just check 1` 连 OCR 真实现一起 vet，需要先跑 just ocr。
@@ -70,7 +71,7 @@ test:
 
 # 跑主程序（会真的用 mDNS 找设备并连打印机）
 run: ui
-    .\sscan.exe
+    .\quick-scan.exe
 
 # ── 发布产物（dist\quick-scan-<版本>-win64.zip，内含单个 exe）──
 # 版本号直接读 app.rc 的 PRODUCTVERSION，避免和资源里的版本漂移。
@@ -79,8 +80,8 @@ package: build
     $stage = "dist\quick-scan-$ver"; \
     if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }; \
     New-Item -ItemType Directory -Force $stage | Out-Null; \
-    if (-not (Test-Path sscan.exe)) { throw 'sscan.exe 不存在，先跑 just build' }; \
-    Copy-Item sscan.exe "$stage\sscan.exe"; \
+    if (-not (Test-Path quick-scan.exe)) { throw 'quick-scan.exe 不存在，先跑 just build' }; \
+    Copy-Item quick-scan.exe "$stage\quick-scan.exe"; \
     if (Test-Path README.md) { Copy-Item README.md $stage }; \
     $zip = "dist\quick-scan-$ver-win64.zip"; \
     if (Test-Path $zip) { Remove-Item $zip -Force }; \
@@ -91,23 +92,23 @@ package: build
 # ── UPX 压缩发布版（可选）──
 # 只用 NRV + --best：体积约减半，启动多 ~0.2 秒。
 # 不要加 --lzma：只再小 1.7MB，启动却多 ~0.8 秒（实测：0.30 → 0.51 → 1.12 秒）。
-# 产物 dist\sscan.exe；根目录的 sscan.exe 保持未压缩，方便排查。
+# 产物 dist\quick-scan.exe；根目录的 quick-scan.exe 保持未压缩，方便排查。
 upx: build
     if (-not (Get-Command upx -ErrorAction SilentlyContinue)) { throw '未找到 upx：winget install UPX.UPX' }; \
     New-Item -ItemType Directory -Force dist | Out-Null; \
-    Copy-Item sscan.exe dist\sscan.exe -Force; \
-    $before = (Get-Item dist\sscan.exe).Length; \
-    upx --best --no-progress dist\sscan.exe; \
+    Copy-Item quick-scan.exe dist\quick-scan.exe -Force; \
+    $before = (Get-Item dist\quick-scan.exe).Length; \
+    upx --best --no-progress dist\quick-scan.exe; \
     if ($LASTEXITCODE -ne 0) { throw 'UPX 压缩失败' }; \
-    upx -t dist\sscan.exe; \
+    upx -t dist\quick-scan.exe; \
     if ($LASTEXITCODE -ne 0) { throw '压缩后完整性校验失败' }; \
-    $after = (Get-Item dist\sscan.exe).Length; \
+    $after = (Get-Item dist\quick-scan.exe).Length; \
     Write-Host ("[upx] {0:N1} MB → {1:N1} MB（{2:N0}%）" -f ($before/1MB), ($after/1MB), (100*$after/$before))
 
 # 清理构建产物
 # 每个目标都先 Test-Path：删不存在的路径会让进程退出码变 1，just 会当成配方失败。
 clean:
-    foreach ($f in 'sscan.exe','cmd\sscan\rsrc_windows_amd64.syso') { if (Test-Path $f) { Remove-Item -Force $f } }; \
+    foreach ($f in 'quick-scan.exe','cmd\quick-scan\rsrc_windows_amd64.syso') { if (Test-Path $f) { Remove-Item -Force $f } }; \
     foreach ($d in 'ocrbridge\target','dist') { if (Test-Path $d) { Remove-Item -Recurse -Force $d } }; \
     Write-Host '[clean] 完成'
 

@@ -1,4 +1,4 @@
-module sscan
+module quick-scan
 
 go 1.27.2
 

@@ -7,7 +7,8 @@ import (
 	"strings"
 )
 
-const tempPrefix = "sscan_"
+// 前缀跟程序名走：改名后旧版本留下的目录不会被新版本误当成自己的。
+const tempPrefix = "quick-scan_"
 
 var tempRoot = filepath.Join(os.TempDir(), tempPrefix+strconv.Itoa(os.Getpid()))
 

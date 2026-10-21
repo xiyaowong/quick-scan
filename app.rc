@@ -20,7 +20,7 @@ BEGIN
       VALUE "ProductName",     "quick-scan"
       VALUE "FileVersion",     "0.1.0"
       VALUE "ProductVersion",  "0.1.0"
-      VALUE "OriginalFilename","sscan.exe"
+      VALUE "OriginalFilename","quick-scan.exe"
     END
   END
   BLOCK "VarFileInfo"

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"sscan/internal/platform"
-	"sscan/internal/scanner"
-	appui "sscan/internal/ui"
+	"quick-scan/internal/platform"
+	"quick-scan/internal/scanner"
+	appui "quick-scan/internal/ui"
 
 	"github.com/egoist/mygo"
 	myui "github.com/egoist/mygo/ui"

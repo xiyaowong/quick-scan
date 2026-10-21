@@ -1,7 +1,7 @@
 // OCR 文件名候选的后台编排：识别在 scanner 里，这里只负责跑和落状态。
 package ui
 
-import "sscan/internal/scanner"
+import "quick-scan/internal/scanner"
 
 // startOCRSuggest 首页扫完后自动跑 OCR 文件名候选（后台，失败静默）。
 func (a *app) startOCRSuggest() {

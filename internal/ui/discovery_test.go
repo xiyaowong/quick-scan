@@ -3,7 +3,7 @@ package ui
 import (
 	"testing"
 
-	"sscan/internal/scanner"
+	"quick-scan/internal/scanner"
 )
 
 // 网段扫描只负责加设备：同一台不重复加，身份分配好，不要冒充在线。
