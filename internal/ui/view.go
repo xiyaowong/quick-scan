@@ -8,6 +8,7 @@ import (
 
 	"sscan/internal/scanner"
 
+	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -94,7 +95,7 @@ func (a *app) pageCell(c *ui.Context, t *ui.Theme, i int) {
 		return
 	}
 	p := &a.pages[i]
-	card := ui.Column(c).Key(p.ID).Fill().
+	card := ui.Column(c.Key(p.ID)).Fill().
 		Background(colPanel).Border(1, colLine).Radius(8).Clip().
 		Transition(ui.ElementTransition{Duration: 140 * time.Millisecond, Colors: true})
 	hovered := card.Hovered()
@@ -336,7 +337,7 @@ func (a *app) scanButton(c *ui.Context, t *ui.Theme) {
 	b.Children(func() {
 		ui.Row(c).Gap(9).AlignItems(ui.Center).Children(func() {
 			if busy {
-				ui.Spinner(c).FontSize(12.5).TextColor(fg)
+				loading.Arc(c, loading.Options{Size: 15.5, Color: fg}).Label(label)
 			} else {
 				ui.Icon(c, icoScan).FontSize(16).TextColor(fg)
 			}
@@ -434,9 +435,10 @@ func (a *app) statusBar(c *ui.Context, t *ui.Theme) {
 		spin := a.detecting || a.probing || a.netScanning
 		btn.Children(func() {
 			ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
-				ic := ui.Icon(c, icoRefresh).FontSize(13).TextColor(colMuted)
 				if spin {
-					ic.Rotate(ic.Loop("spin", 900*time.Millisecond, ui.Linear) * 360)
+					loading.Arc(c, loading.Options{Size: 13, Color: colMuted}).Label("正在查找打印机")
+				} else {
+					ui.Icon(c, icoRefresh).FontSize(13).TextColor(colMuted)
 				}
 				ui.Text(c, "刷新").FontSize(11.5).TextColor(colMuted)
 			})
@@ -568,7 +570,7 @@ func (a *app) lightboxOverlay(c *ui.Context, t *ui.Theme) {
 			imgRow.Children(func() {
 				if lb.Full == nil {
 					ui.Column(c).Gap(10).Center().Children(func() {
-						ui.Spinner(c).FontSize(18).TextColor(white(0.7))
+						loading.Arc(c, loading.Options{Size: 22.5, Color: white(0.7)}).Label("正在打开")
 						ui.Text(c, "正在打开 …").FontSize(12).TextColor(white(0.55))
 					})
 					return
