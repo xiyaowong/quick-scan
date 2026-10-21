@@ -36,13 +36,18 @@ icon:
 
 # ── 3. 64 位主程序（OCR 静态链入）──
 # -s -w -trimpath -mygo_noinspector：剥 DWARF/符号/路径，mygo 生产构建的官方姿势。
-# **不设子系统**（既不用 -H=windowsgui，也不加 /SUBSYSTEM:WINDOWS）：cgo 外部链接下
-#   -H=windowsgui 会被静默丢弃，而 /SUBSYSTEM 把"终端里能看到报错"彻底断掉。
-#   改成运行期动态脱钩（console.go）：双击启动时 FreeConsole 摘掉控制台，
-#   从终端启动时留着，stderr 有地方去。
+# 子系统保持 console（不用 -H=windowsgui，也不切 /subsystem:windows）：cgo 外部链接下
+#   -H=windowsgui 会被静默丢弃，而 windows 子系统会让 stderr 无处可去。
+#   控制台改在运行期脱钩（console.go）：双击启动时 FreeConsole 摘掉，从终端启动时留着。
+# CGO_LDFLAGS 只抬 PE 头里的 SubsystemVersion（clang/lld 默认写 6.0，Go 内部链接器写
+#   10.0），不切换子系统类型。6.0 会被 Windows 当成 Win7 程序，拒绝创建 WS_EX_LAYERED
+#   子窗口；mygo 自定义标题栏的按钮/顶边正是这种子窗口，于是启动报
+#   "cannot create the window controls of a window with a hidden title bar"，贴边缩放和
+#   贴靠布局也一起失效。Windows 8（6.2）起才支持，这里取 10.0 与内部链接器对齐。
 ui: icon ocr
     $env:CGO_ENABLED = '1'; \
     $env:GOARCH = 'amd64'; \
+    $env:CGO_LDFLAGS = '-Xlinker /subsystem:console,10.0'; \
     if (-not $env:CC) { $env:CC = if (Get-Command clang -ErrorAction SilentlyContinue) { (Get-Command clang).Source } else { 'D:\Scoop\apps\llvm\current\bin\clang.exe' } }; \
     go build -trimpath -tags mygo_noinspector -ldflags '-s -w' -o quick-scan.exe ./cmd/quick-scan; \
     if ($LASTEXITCODE -ne 0) { throw '主程序编译失败' }; \
