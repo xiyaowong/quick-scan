@@ -88,6 +88,11 @@ func (a *app) emptyState(c *ui.Context, t *ui.Theme) {
 
 // 不在这里 .Drag()：GridView 的 Reorder 已在外层挂了拖拽源，内层再挂会抢走按下事件。
 func (a *app) pageCell(c *ui.Context, t *ui.Theme, i int) {
+	// 删除按钮在这一帧构建时就执行，pages 已经变短；GridView 仍按本帧开头的
+	// 页数继续建后面的格子，越界的先跳过——点击会触发重绘，下一遍就对齐了。
+	if i >= len(a.pages) {
+		return
+	}
 	p := &a.pages[i]
 	card := ui.Column(c).Key(p.ID).Fill().
 		Background(colPanel).Border(1, colLine).Radius(8).Clip().
@@ -119,14 +124,14 @@ func (a *app) pageCell(c *ui.Context, t *ui.Theme, i int) {
 		ui.Row(c).Height(42).Padding(0, 8, 0, 8).AlignItems(ui.Center).Gap(2).Children(func() {
 			ui.Icon(c, icoGrip).FontSize(11).TextColor(colFaint).Tooltip("按住拖动排序")
 			ui.Row(c).Grow(1)
-			if iconButton(c, icoRotate, "旋转 90°", 30).Clicked() {
+			if iconButton(c, icoRotate, "旋转 90°", 30).Label("旋转第 " + itoa(i+1) + " 页").Clicked() {
 				a.rotatePage(p.ID)
 			}
-			if iconButton(c, icoDownload, "导出此页", 30).Clicked() {
+			if iconButton(c, icoDownload, "导出此页", 30).Label("导出第 " + itoa(i+1) + " 页").Clicked() {
 				a.openExport(i)
 			}
 			ui.Row(c).Width(1).Height(14).Background(colLineSoft).Margin(3, 0, 3, 0)
-			if dangerIconButton(c, icoTrash, "删除此页", 30).Clicked() {
+			if dangerIconButton(c, icoTrash, "删除此页", 30).Label("删除第 " + itoa(i+1) + " 页").Clicked() {
 				a.deletePage(p.ID)
 			}
 		})
