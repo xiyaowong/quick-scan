@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -426,8 +428,14 @@ type Options struct {
 	Intent string // eSCL Intent；空 = Document
 }
 
-// 失败时 DELETE 掉任务。
-func Scan(ctx context.Context, d *DeviceInfo, opts Options, dir string) ([]string, error) {
+// 失败时 DELETE 掉任务。progress 拿到的是 0..1 的估算进度：设备只报“扫完没有”，
+// 不报扫到第几行，细处靠时间和下载字节数推。
+func Scan(ctx context.Context, d *DeviceInfo, opts Options, dir string, progress func(float64)) ([]string, error) {
+	report := func(f float64) {
+		if progress != nil {
+			progress(f)
+		}
+	}
 	if d.caps == nil {
 		if err := Probe(ctx, d); err != nil {
 			return nil, err
@@ -460,6 +468,14 @@ func Scan(ctx context.Context, d *DeviceInfo, opts Options, dir string) ([]strin
 		return nil, err
 	}
 	defer cancelScanJob(jobURL)
+	report(0.02)
+
+	expect := pageEstimate(opts)
+	// 进纸口不知道还剩几张：每页只推进剩余量的一段，扫完再补到 100%。
+	span, base := 1.0, 0.0
+	if opts.Feeder {
+		span = 0.9
+	}
 
 	ext := ".jpg"
 	if format == "image/png" {
@@ -467,7 +483,9 @@ func Scan(ctx context.Context, d *DeviceInfo, opts Options, dir string) ([]strin
 	}
 	var files []string
 	for i := 1; ; i++ {
-		data, ct, err := nextDocument(ctx, jobURL)
+		data, ct, err := nextDocument(ctx, jobURL, expect, func(f float64) {
+			report(base + (1-base)*span*f)
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -485,11 +503,44 @@ func Scan(ctx context.Context, d *DeviceInfo, opts Options, dir string) ([]strin
 		if !opts.Feeder {
 			break // 玻璃板一次一张
 		}
+		base += (1 - base) * span
+		report(base)
 	}
 	if len(files) == 0 {
 		return nil, errors.New("扫描仪没有返回任何页面（可能缺纸）")
 	}
+	report(1)
 	return files, nil
+}
+
+// pageEstimate 粗估一页要扫多久：像素数 ÷ 经验吞吐，彩色最慢。
+func pageEstimate(opts Options) time.Duration {
+	units, ok := paperUnits[opts.Size]
+	if !ok {
+		units = paperUnits[PaperA4]
+	}
+	scale := float64(opts.DPI) / 300
+	px := float64(units[0]*units[1]) * scale * scale
+	rate := 1.6e6 // 像素/秒
+	switch opts.Color {
+	case ColorModeGray:
+		rate = 3.2e6
+	case ColorModeBW:
+		rate = 8e6
+	}
+	d := time.Duration(px / rate * float64(time.Second))
+	if d < time.Second {
+		d = time.Second
+	}
+	return d
+}
+
+// scanEstimate 按时间估设备扫到了哪：前段爬得快，越往后越慢，留 10% 给下载。
+func scanEstimate(elapsed, expect time.Duration) float64 {
+	if expect <= 0 {
+		expect = 6 * time.Second
+	}
+	return 0.9 * (1 - math.Exp(-1.6*elapsed.Seconds()/expect.Seconds()))
 }
 
 func (d *DeviceInfo) capabilitiesURL() string {
@@ -642,10 +693,40 @@ func resolveURL(base, ref string) string {
 }
 
 // nextDocument 取下一张；刚建任务时的 503 按退避重试。
-func nextDocument(ctx context.Context, jobURL string) ([]byte, string, error) {
+func nextDocument(ctx context.Context, jobURL string, expect time.Duration, progress func(float64)) ([]byte, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, pageTimeout)
 	defer cancel()
 	pageURL := strings.TrimRight(jobURL, "/") + "/NextDocument"
+	start := time.Now()
+
+	// Do 会一直阻塞到设备扫完，中间没有事件可听：另起一个 ticker 按时间报估算值。
+	// 收尾要等 goroutine 真的退出，进度才不会在下载阶段被一个迟到的估算值拉低。
+	stop := make(chan struct{})
+	tickerDone := make(chan struct{})
+	var stopOnce sync.Once
+	stopTicker := func() { stopOnce.Do(func() { close(stop) }) }
+	defer func() {
+		stopTicker()
+		<-tickerDone
+	}()
+	if progress == nil {
+		close(tickerDone)
+	} else {
+		go func() {
+			defer close(tickerDone)
+			t := time.NewTicker(100 * time.Millisecond)
+			defer t.Stop()
+			for {
+				select {
+				case <-stop:
+					return
+				case now := <-t.C:
+					progress(scanEstimate(now.Sub(start), expect))
+				}
+			}
+		}()
+	}
+
 	delay := 250 * time.Millisecond
 	for {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
@@ -656,8 +737,16 @@ func nextDocument(ctx context.Context, jobURL string) ([]byte, string, error) {
 		if err == nil {
 			switch resp.StatusCode {
 			case http.StatusOK:
-				data, rerr := io.ReadAll(resp.Body)
-				resp.Body.Close()
+				stopTicker()
+				<-tickerDone
+				// 扫描阶段爬到哪，剩下的就按下载字节数收尾；这里从此刻起算，
+				// 所以不会小于 ticker 刚报过的值。
+				scan := scanEstimate(time.Since(start), expect)
+				data, rerr := readDocument(resp, func(f float64) {
+					if progress != nil {
+						progress(scan + (1-scan)*f)
+					}
+				})
 				if rerr != nil {
 					return nil, "", fmt.Errorf("读取扫描页失败：%w", rerr)
 				}
@@ -679,6 +768,36 @@ func nextDocument(ctx context.Context, jobURL string) ([]byte, string, error) {
 		}
 		if delay < 2*time.Second {
 			delay *= 2
+		}
+	}
+}
+
+// readDocument 读取一页的响应体；有 Content-Length 时才谈得上按字节数报进度。
+// 每 100ms 最多报一次，别让一次下载推几百次界面重绘。
+func readDocument(resp *http.Response, progress func(float64)) ([]byte, error) {
+	defer resp.Body.Close()
+	if progress == nil || resp.ContentLength <= 0 {
+		return io.ReadAll(resp.Body)
+	}
+	total := float64(resp.ContentLength)
+	var buf bytes.Buffer
+	chunk := make([]byte, 64<<10)
+	last := time.Now()
+	for {
+		n, err := resp.Body.Read(chunk)
+		if n > 0 {
+			buf.Write(chunk[:n])
+			if now := time.Now(); now.Sub(last) >= 100*time.Millisecond {
+				last = now
+				progress(min(1, float64(buf.Len())/total))
+			}
+		}
+		if err == io.EOF {
+			progress(1)
+			return buf.Bytes(), nil
+		}
+		if err != nil {
+			return buf.Bytes(), err
 		}
 	}
 }

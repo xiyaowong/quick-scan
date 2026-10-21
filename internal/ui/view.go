@@ -345,9 +345,12 @@ func (a *app) scanButton(c *ui.Context, t *ui.Theme) {
 
 func (a *app) scanFeedback(c *ui.Context) {
 	switch {
+	case a.scanning:
+		// 设备不报扫到第几行，这是估算值，所以不给百分比数字。
+		ui.Progress(c, a.scanProgress).FillWidth()
 	case a.devState == DevOffline && !a.probing:
 		notice(c, icoAlert, "这台打印机连不上，换一台试试。", colDanger, colDangerSoft)
-	case !a.scanning && a.scanStatus != "":
+	case a.scanStatus != "":
 		ui.Row(c).FillWidth().Justify(ui.Center).Children(func() {
 			ui.Text(c, a.scanStatus).FontSize(11.5).TextColor(colMuted).TextAlign(ui.Center)
 		})

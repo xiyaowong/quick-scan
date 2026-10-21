@@ -320,7 +320,7 @@ func TestProbeAndScanPlaten(t *testing.T) {
 
 	dir := t.TempDir()
 	files, err := Scan(context.Background(), &d,
-		Options{Color: ColorModeColor, DPI: 300, Size: PaperA4, Intent: "Photo"}, dir)
+		Options{Color: ColorModeColor, DPI: 300, Size: PaperA4, Intent: "Photo"}, dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,6 +339,36 @@ func TestProbeAndScanPlaten(t *testing.T) {
 	}
 }
 
+// 设备只报“扫完没有”，进度靠时间估 + 下载字节数推；这里验证它单调、有起点、收在 1。
+func TestScanReportsProgress(t *testing.T) {
+	fs := newFakeScanner(t, 3)
+	d := fs.device()
+	if err := Probe(context.Background(), &d); err != nil {
+		t.Fatal(err)
+	}
+	var got []float64
+	files, err := Scan(context.Background(), &d,
+		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, t.TempDir(),
+		func(f float64) { got = append(got, f) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 3 {
+		t.Fatalf("ADF pages = %d, want 3", len(files))
+	}
+	if len(got) < 5 {
+		t.Fatalf("进度回调太少：%v", got)
+	}
+	if got[0] <= 0 || got[len(got)-1] != 1 {
+		t.Fatalf("进度应从前 0 到 1：%v", got)
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i] < got[i-1] {
+			t.Fatalf("进度倒退了：%v", got)
+		}
+	}
+}
+
 func TestScanADFMultiplePages(t *testing.T) {
 	fs := newFakeScanner(t, 3)
 	d := fs.device()
@@ -347,7 +377,7 @@ func TestScanADFMultiplePages(t *testing.T) {
 	}
 	dir := t.TempDir()
 	files, err := Scan(context.Background(), &d,
-		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, dir)
+		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

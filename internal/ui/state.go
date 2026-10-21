@@ -234,8 +234,9 @@ type app struct {
 	nextPageID uint64
 	pageGrid   ui.GridState
 
-	scanning   bool
-	scanStatus string
+	scanning     bool
+	scanStatus   string
+	scanProgress float64 // 0..1 的估算进度：设备只报扫完没有，细节靠时间和字节数推
 
 	dlg DialogKind
 

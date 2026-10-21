@@ -421,6 +421,7 @@ func (a *app) startScan() {
 		return
 	}
 	a.scanning = true
+	a.scanProgress = 0
 	if a.feeder {
 		a.scanStatus = "进纸口扫描中 …"
 	} else {
@@ -439,7 +440,9 @@ func (a *app) startScan() {
 	a.saveCache() // 用户真正用起来的设备，下次启动优先显示
 
 	go func() {
-		files, err := scanner.Scan(context.Background(), &dev, opts, dir)
+		files, err := scanner.Scan(context.Background(), &dev, opts, dir, func(f float64) {
+			Win.Update(func() { a.scanProgress = f })
+		})
 		Win.Update(func() {
 			a.scanning = false
 			if err != nil {

@@ -116,7 +116,7 @@ func TestLiveScan(t *testing.T) {
 	start := time.Now()
 	files, err := Scan(context.Background(), &dev, Options{
 		Color: ColorModeColor, DPI: 300, Size: PaperA4, Intent: intent,
-	}, t.TempDir())
+	}, t.TempDir(), nil)
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}
