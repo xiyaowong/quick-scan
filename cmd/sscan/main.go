@@ -50,7 +50,11 @@ func run() (err error) {
 			UseContentSize: true,
 			MinWidth:       920,
 			MinHeight:      660,
-			Content:        myui.View(app.View),
+			// 标题栏由视图自己画：窗口按钮躲进视图后，右上角才能和界面同一个风格。
+			TitleBarStyle:     mygo.TitleBarHidden,
+			HideWindowButtons: true,
+			TitleBarHeight:    40,
+			Content:           myui.View(app.View),
 		})
 		appui.Win = win
 		// 有未导出页面时先确认再关。

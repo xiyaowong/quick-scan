@@ -9,6 +9,14 @@ func strokeIcon(body string) *ui.SVG {
 			body + `</svg>`))
 }
 
+// 窗口按钮要细线：系统标题栏的按钮就是细的，粗线和界面其它图标放一起会显得笨。
+func thinIcon(body string) *ui.SVG {
+	return ui.MustParseSVG([]byte(
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" ` +
+			`stroke="#000" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round">` +
+			body + `</svg>`))
+}
+
 var (
 	icoScan = strokeIcon(
 		`<path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8"/>` +
@@ -49,4 +57,11 @@ var (
 	icoPlus  = strokeIcon(`<path d="M12 5v14"/><path d="M5 12h14"/>`)
 	icoMinus = strokeIcon(`<path d="M5 12h14"/>`)
 	icoCheck = strokeIcon(`<path d="m5 12.5 4.5 4.5L19 7"/>`)
+
+	icoWinMin     = thinIcon(`<path d="M5 12h14"/>`)
+	icoWinMax     = thinIcon(`<rect x="6.5" y="6.5" width="11" height="11" rx="1"/>`)
+	icoWinRestore = thinIcon(
+		`<rect x="5" y="9" width="10" height="10" rx="1"/>` +
+			`<path d="M8.5 9V6.5A1.5 1.5 0 0 1 10 5h7.5A1.5 1.5 0 0 1 19 6.5V14a1.5 1.5 0 0 1-1.5 1.5H15"/>`)
+	icoWinClose = thinIcon(`<path d="M6.5 6.5l11 11"/><path d="M17.5 6.5l-11 11"/>`)
 )
