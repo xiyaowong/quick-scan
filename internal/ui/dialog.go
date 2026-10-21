@@ -38,6 +38,8 @@ func (a *app) exportDialog(c *ui.Context, t *ui.Theme) {
 			if a.exportSingle >= 0 {
 				title = fmt.Sprintf("导出第 %d 页", a.exportSingle+1)
 				subtitle = fmt.Sprintf("仅导出第 %d 页（共 %d 页）", a.exportSingle+1, len(a.pages))
+			} else if n := len(a.exportTargets()); n < len(a.pages) && n > 0 {
+				subtitle = fmt.Sprintf("导出选中的 %d 页（共 %d 页）", n, len(a.pages))
 			}
 			ui.Row(c).Padding(20, 22, 0, 22).Gap(13).AlignItems(ui.Center).Children(func() {
 				badge := ui.Row(c).Size(40, 40).Radius(10).Background(colAccentSoft).Center().Shrink(0)
@@ -232,6 +234,10 @@ func (a *app) exportTargets() []Page {
 	if a.exportSingle >= 0 && a.exportSingle < len(a.pages) {
 		return []Page{a.pages[a.exportSingle]}
 	}
+	// 勾了页就只导出勾选的；一页没勾时仍导出全部，保持原来的用法。
+	if sel := a.selectedPages(); len(sel) > 0 {
+		return sel
+	}
 	return a.pages
 }
 
@@ -267,6 +273,7 @@ func (a *app) deletePage(id uint64) {
 		return
 	}
 	os.Remove(a.pages[idx].FullPath)
+	delete(a.selected, id)
 	a.pages = append(a.pages[:idx], a.pages[idx+1:]...)
 	if a.lightbox != nil {
 		if len(a.pages) == 0 {

@@ -187,6 +187,21 @@ func segmented(c *ui.Context, cur *int, labels []string, enabled []bool) bool {
 	return track.Changed()
 }
 
+// 页头里的「全选 / 取消选择」：只是轻量文字按钮，别和主按钮抢注意力。
+func textLink(c *ui.Context, label string) ui.Element {
+	b := ui.ButtonBase(c).Height(28).Padding(0, 9, 0, 9).Radius(6).
+		Transition(ui.ElementTransition{Duration: 120 * time.Millisecond, Colors: true})
+	fg := colMuted
+	if b.Hovered() {
+		b.Background(colPanelHover)
+		fg = colInk
+	}
+	b.Children(func() {
+		ui.Text(c, label).FontSize(11.5).TextColor(fg).SingleLine()
+	})
+	return b
+}
+
 func countBadge(c *ui.Context, n int) {
 	ui.Row(c).AlignItems(ui.Center).Gap(5).Padding(6, 12, 6, 12).Radius(999).
 		Background(colPanel).Border(1, colLine).Children(func() {
