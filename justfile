@@ -1,4 +1,4 @@
-# simple-scan 构建管理（Windows 64 位，Go + mygo 原生 UI）
+# quick-scan 构建管理（Windows 64 位，Go + mygo 原生 UI）
 #
 # 单一产物 sscan.exe：mygo UI + eSCL 客户端 + 内嵌 OCR 模型。
 # 扫描走局域网 eSCL（HTTP），不需要厂商 TWAIN/WIA 驱动，也没有子进程。
@@ -72,17 +72,17 @@ test:
 run: ui
     .\sscan.exe
 
-# ── 发布产物（dist\simple-scan-<版本>-win64.zip，内含单个 exe）──
+# ── 发布产物（dist\quick-scan-<版本>-win64.zip，内含单个 exe）──
 # 版本号直接读 app.rc 的 PRODUCTVERSION，避免和资源里的版本漂移。
 package: build
     $ver = (((Select-String -Path app.rc -Pattern 'PRODUCTVERSION\s+([\d,]+)').Matches[0].Groups[1].Value -split ',')[0..2] -join '.'); \
-    $stage = "dist\simple-scan-$ver"; \
+    $stage = "dist\quick-scan-$ver"; \
     if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }; \
     New-Item -ItemType Directory -Force $stage | Out-Null; \
     if (-not (Test-Path sscan.exe)) { throw 'sscan.exe 不存在，先跑 just build' }; \
     Copy-Item sscan.exe "$stage\sscan.exe"; \
     if (Test-Path README.md) { Copy-Item README.md $stage }; \
-    $zip = "dist\simple-scan-$ver-win64.zip"; \
+    $zip = "dist\quick-scan-$ver-win64.zip"; \
     if (Test-Path $zip) { Remove-Item $zip -Force }; \
     Compress-Archive -Path $stage -DestinationPath $zip; \
     Write-Host ''; \

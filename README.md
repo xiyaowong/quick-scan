@@ -1,6 +1,6 @@
-# simple-scan
+# quick-scan
 
-一个简单的 Windows 扫描工具：放纸 → 扫描 → 导出 PDF / JPG。
+一个快速的 Windows 扫描工具：放纸 → 扫描 → 导出 PDF / JPG。
 
 ![主界面](docs/screenshot.png)
 
