@@ -31,7 +31,7 @@ func (a *app) statusLabel() string {
 	case DevOffline:
 		return "连不上"
 	default:
-		if a.detecting || a.probing {
+		if a.detecting || a.probing || a.netScanning {
 			return "连接中"
 		}
 		return "未连接"
@@ -426,12 +426,12 @@ func (a *app) statusBar(c *ui.Context, t *ui.Theme) {
 			ui.Text(c, "还没找到打印机").FontSize(12).TextColor(colMuted)
 		}
 
-		btn := ui.ButtonBase(c).Height(32).Padding(0, 11, 0, 11).Radius(7).Disabled(a.detecting).
+		btn := ui.ButtonBase(c).Height(32).Padding(0, 11, 0, 11).Radius(7).Disabled(a.detecting || a.netScanning).
 			Tooltip("重新找打印机").Transition(ui.ElementTransition{Duration: 120 * time.Millisecond, Colors: true})
 		if btn.Hovered() {
 			btn.Background(colPanelHover)
 		}
-		spin := a.detecting || a.probing
+		spin := a.detecting || a.probing || a.netScanning
 		btn.Children(func() {
 			ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
 				ic := ui.Icon(c, icoRefresh).FontSize(13).TextColor(colMuted)

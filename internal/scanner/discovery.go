@@ -150,15 +150,21 @@ func (s *multicastSocket) read(buf []byte) (int, net.IP, error) {
 
 func (s *multicastSocket) Close() { s.conn.Close() }
 
+// defaultIPv4Iface 是默认出口网卡：组播和网段扫描都用它。
 func defaultIPv4Iface() (*net.Interface, error) {
-	// UDP Dial 只让系统选路，不发包。
+	_, ifi, err := defaultIPv4Addr()
+	return ifi, err
+}
+
+// defaultIPv4Addr 用 UDP Dial 让系统选路（不发包），拿默认出口的源地址和网卡。
+func defaultIPv4Addr() (net.IP, *net.Interface, error) {
 	conn, err := net.DialUDP("udp4", nil, &net.UDPAddr{IP: net.IPv4(8, 8, 8, 8), Port: 53})
 	if err == nil {
 		local := conn.LocalAddr().(*net.UDPAddr).IP.To4()
 		conn.Close()
 		if local != nil {
 			if ifi := ifaceByIPv4(local); ifi != nil {
-				return ifi, nil
+				return local, ifi, nil
 			}
 		}
 	}
@@ -171,10 +177,10 @@ func defaultIPv4Iface() (*net.Interface, error) {
 			continue
 		}
 		if ip := ifaceIPv4(ifi); ip != nil && !ip.IsLinkLocalUnicast() {
-			return ifi, nil
+			return ip, ifi, nil
 		}
 	}
-	return nil, errors.New("没有可用的 IPv4 网卡，无法发现扫描仪")
+	return nil, nil, errors.New("没有可用的 IPv4 网卡，无法发现扫描仪")
 }
 
 func ifaceByIPv4(ip net.IP) *net.Interface {
@@ -201,6 +207,24 @@ func ifaceIPv4(ifi *net.Interface) net.IP {
 	for _, a := range addrs {
 		if ipn, ok := a.(*net.IPNet); ok && ipn.IP.To4() != nil {
 			return ipn.IP.To4()
+		}
+	}
+	return nil
+}
+
+// ifaceIPv4Net 找网卡上与 ip 同一地址的子网（含掩码），网段扫描要用。
+func ifaceIPv4Net(ifi *net.Interface, ip net.IP) *net.IPNet {
+	want := ip.To4()
+	if ifi == nil || want == nil {
+		return nil
+	}
+	addrs, err := ifi.Addrs()
+	if err != nil {
+		return nil
+	}
+	for _, a := range addrs {
+		if ipn, ok := a.(*net.IPNet); ok && ipn.IP.To4() != nil && ipn.IP.Equal(want) {
+			return &net.IPNet{IP: ipn.IP.To4(), Mask: ipn.Mask}
 		}
 	}
 	return nil

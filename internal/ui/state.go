@@ -220,6 +220,7 @@ type app struct {
 	pendingProbe bool         // 探测期间又切了设备：上一个回来后补探
 	probed       map[int]bool // 已探测过的设备（键是 scanner.DeviceInfo.Idx，不是列表下标）
 	detecting    bool
+	netScanning  bool // 正在扫网段兜底
 	devGrid      ui.GridState
 	// hint 是状态栏右侧唯一的一行提示：检测进度、正在连哪台、失败原因。
 	hint string

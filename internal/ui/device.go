@@ -21,9 +21,13 @@ func (a *app) startup() {
 	a.startDetect()
 }
 
+// netScanHint 网段扫描时的状态栏提示：mDNS 没结果时让用户知道还在找。
+const netScanHint = "正在扫描局域网 …"
+
 // startDetect 后台浏览局域网设备。只发现、不探测能力；有缓存名单时静默刷新。
+// mDNS 没应答且没有能用的设备时，才兜底扫网段——扫描是为了找，不该每次启动都跑。
 func (a *app) startDetect() {
-	if a.detecting {
+	if a.detecting || a.netScanning {
 		return
 	}
 	a.detecting = true
@@ -32,27 +36,99 @@ func (a *app) startDetect() {
 	}
 	Win.Update(func() {})
 	go func() {
-		devs, err := scanner.Discover(context.Background())
+		devs, mdnsErr := scanner.Discover(context.Background())
 		Win.Update(func() {
 			a.detecting = false
-			if err != nil {
+			switch {
+			case mdnsErr != nil:
+				// 先不报错：网段扫描还能兜底，等它跑完再决定提示。
 				if len(a.devices) == 0 {
 					a.applyDetect(nil)
-					a.hint = err.Error()
 				}
-				return // 有缓存就静默失败，列表继续可用
-			}
-			if len(a.devices) == 0 {
+			case len(a.devices) == 0:
 				a.applyDetect(devs)
 				a.hint = ""
 				if len(devs) > 0 {
 					a.probeFirstOnline()
 				}
+			default:
+				a.mergeDetected(devs)
+			}
+			// mDNS 找到了，或缓存里的设备已经连上：够用了，不必扫网段。
+			if len(devs) > 0 || a.anyDeviceOnline() {
 				return
 			}
-			a.mergeDetected(devs) // 缓存名单已显示：只合并，不打断
+			a.startSubnetScan(mdnsErr)
 		})
 	}()
+}
+
+// anyDeviceOnline 有能用的设备就不扫网段，否则每次启动都会白扫一遍 254 个地址。
+func (a *app) anyDeviceOnline() bool {
+	for i := range a.devices {
+		if a.devices[i].Online {
+			return true
+		}
+	}
+	return false
+}
+
+// startSubnetScan mDNS 没结果时兜底：每找到一台立刻可用，其余地址后台继续扫。
+func (a *app) startSubnetScan(mdnsErr error) {
+	if a.netScanning {
+		return
+	}
+	a.netScanning = true
+	if len(a.devices) == 0 {
+		a.hint = netScanHint
+	}
+	Win.Update(func() {})
+	go func() {
+		scanErr := scanner.ScanSubnet(context.Background(), func(d scanner.DeviceInfo) {
+			Win.Update(func() { a.addDiscovered(d) })
+		})
+		Win.Update(func() {
+			a.netScanning = false
+			if a.hint == netScanHint {
+				a.hint = ""
+			}
+			if len(a.devices) == 0 {
+				switch {
+				case scanErr != nil:
+					a.hint = scanErr.Error()
+				case mdnsErr != nil:
+					a.hint = mdnsErr.Error()
+				}
+			}
+		})
+	}()
+}
+
+// addDiscovered 网段扫描每找到一台就调一次：只负责加进名单，
+// 选中、排序、探测仍走原有的设备逻辑。
+func (a *app) addDiscovered(d scanner.DeviceInfo) {
+	key := scanner.DeviceKey(d)
+	if key == "" {
+		return
+	}
+	if i := a.indexByKey(key); i >= 0 {
+		if d.Name != "" {
+			a.devices[i].Name = d.Name
+		}
+		return
+	}
+	d.Idx = a.allocDevIdx()
+	d.Online = false
+	a.devices = append(a.devices, d)
+	if a.hint == netScanHint {
+		a.hint = ""
+	}
+	a.refreshState()
+	a.sortDevices()
+	a.saveCache()
+	if !a.probing && !a.userPicked && a.devState != DevOnline {
+		a.probeFirstUnprobed()
+	}
 }
 
 // recheckAll 用户点 ⟳：重新验证已知设备，同时再跑一轮 mDNS。
