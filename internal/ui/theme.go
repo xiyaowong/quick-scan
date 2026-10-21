@@ -34,6 +34,7 @@ var (
 const (
 	statusBarHeight = 52
 	railWidth       = 348
+	titleBarHeight  = 40
 )
 
 // 以 mygo 的 LightTheme 为底，保证度量齐全。

@@ -16,6 +16,7 @@ func (a *app) view(c *ui.Context) {
 	c.SetTheme(lightTheme())
 	t := c.Theme()
 	ui.Column(c).Fill().Background(t.Background).Children(func() {
+		a.titleBar(c)
 		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
 			a.pagesPanel(c, t)
 			a.settingsPanel(c, t)
@@ -441,6 +442,67 @@ func (a *app) exportButton(c *ui.Context) {
 	if b.Clicked() {
 		a.openExport(-1)
 	}
+}
+
+// 标题栏由视图自己画：系统按钮已隐藏，这一条既是拖动区，也放我们自己的按钮。
+func (a *app) titleBar(c *ui.Context) {
+	bar := ui.Row(c).Height(titleBarHeight).FillWidth().Background(colPanel).
+		AlignItems(ui.Center).DragWindow()
+	bar.Children(func() {
+		ui.Row(c).Padding(0, 16, 0, 16).AlignItems(ui.Center).Gap(9).Children(func() {
+			logo := ui.Row(c).Size(20, 20).Radius(6).Background(colAccentSoft).Center()
+			logo.Children(func() {
+				ui.Icon(c, icoScan).FontSize(12).TextColor(colAccent)
+			})
+			ui.Text(c, "简易扫描").FontSize(12.5).FontWeight(600).TextColor(colInk)
+		})
+		ui.Row(c).Grow(1)
+		a.windowButtons(c)
+	})
+	hairline(c)
+}
+
+func (a *app) windowButtons(c *ui.Context) {
+	maxed := Win != nil && Win.IsMaximized()
+	icon, label := icoWinMax, "最大化"
+	if maxed {
+		icon, label = icoWinRestore, "还原"
+	}
+
+	if windowButton(c, icoWinMin, "最小化", false).Clicked() && Win != nil {
+		Win.Minimize()
+	}
+	// 标出来，Windows 11 才会在这个按钮上弹贴靠布局。
+	if windowButton(c, icon, label, false).MaximizeButton().Clicked() && Win != nil {
+		Win.ToggleMaximize()
+	}
+	if windowButton(c, icoWinClose, "关闭", true).Clicked() && Win != nil {
+		Win.Close()
+	}
+}
+
+func windowButton(c *ui.Context, ic *ui.SVG, label string, danger bool) ui.Element {
+	b := ui.ButtonBase(c).Size(46, titleBarHeight).Radius(0).Label(label).Tooltip(label).
+		Transition(ui.ElementTransition{Duration: 100 * time.Millisecond, Colors: true})
+	fg := colMuted
+	switch {
+	case danger && b.Pressed():
+		b.Background(ui.Hex("#B22214"))
+		fg = ui.RGB(255, 255, 255)
+	case danger && b.Hovered():
+		b.Background(ui.Hex("#C42B1C"))
+		fg = ui.RGB(255, 255, 255)
+	case b.Pressed():
+		b.Background(colLine)
+		fg = colInk
+	case b.Hovered():
+		b.Background(colPanelHover)
+		fg = colInk
+	}
+	b.Children(func() {
+		ui.Icon(c, ic).FontSize(13).TextColor(fg)
+	})
+	return b
 }
 
 func (a *app) statusBar(c *ui.Context, t *ui.Theme) {
