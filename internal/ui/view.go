@@ -88,6 +88,11 @@ func (a *app) pagesPanel(c *ui.Context, t *ui.Theme) {
 			ui.Text(c, hint).FontSize(11).TextColor(colMuted)
 		})
 	})
+	// 右键菜单里的删除等到这里：格子建到一半缩短 pages 会让后面的格子拿错页。
+	if id := a.pendingDelete; id != 0 {
+		a.pendingDelete = 0
+		a.deletePage(id)
+	}
 }
 
 func (a *app) emptyState(c *ui.Context, t *ui.Theme) {
@@ -156,6 +161,31 @@ func (a *app) pageCell(c *ui.Context, t *ui.Theme, i int) {
 	})
 	if card.Clicked() || card.DoubleClicked() {
 		a.openLightbox(i)
+	}
+	card.ContextMenu(func(m *ui.Menu) { a.pageMenu(m, i, p.ID) })
+}
+
+// 右键菜单只作用于点到的这一页；多页用勾选导出。
+func (a *app) pageMenu(m *ui.Menu, i int, id uint64) {
+	if m.Item("看大图").Chosen() {
+		a.openLightbox(i)
+	}
+	if m.Item("旋转 90°").Chosen() {
+		a.rotatePage(id)
+	}
+	if m.Item("导出此页").Chosen() {
+		a.openExport(i)
+	}
+	label := "勾选此页"
+	if a.isSelected(id) {
+		label = "取消勾选"
+	}
+	if m.Item(label).Chosen() {
+		a.toggleSelected(id)
+	}
+	m.Separator()
+	if m.Item("删除此页").Chosen() {
+		a.pendingDelete = id
 	}
 }
 

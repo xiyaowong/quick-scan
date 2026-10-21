@@ -236,6 +236,8 @@ type app struct {
 	pageGrid   ui.GridState
 	// selected 是勾选导出的页面，按 ID 记：排序/删除后不会错位到别的页。
 	selected map[uint64]bool
+	// pendingDelete 是右键菜单选中的删除：等这一轮格子建完再删，免得建到一半缩短 pages。
+	pendingDelete uint64
 
 	scanning     bool
 	scanStatus   string
