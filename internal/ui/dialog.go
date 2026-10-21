@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"sscan/internal/scanner"
+	"quick-scan/internal/scanner"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"

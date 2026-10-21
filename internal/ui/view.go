@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"sscan/internal/scanner"
+	"quick-scan/internal/scanner"
 
 	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/ui"
@@ -484,7 +484,7 @@ func (a *app) titleBar(c *ui.Context) {
 			logo.Children(func() {
 				ui.Icon(c, icoScan).FontSize(12).TextColor(colAccent)
 			})
-			ui.Text(c, "简易扫描").FontSize(12.5).FontWeight(600).TextColor(colInk)
+			ui.Text(c, "快速扫描").FontSize(12.5).FontWeight(600).TextColor(colInk)
 		})
 		ui.Row(c).Grow(1)
 		a.windowButtons(c)

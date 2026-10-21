@@ -6,8 +6,8 @@ import (
 	"context"
 	"sort"
 
-	"sscan/internal/platform"
-	"sscan/internal/scanner"
+	"quick-scan/internal/platform"
+	"quick-scan/internal/scanner"
 
 	"github.com/egoist/mygo/ui"
 )

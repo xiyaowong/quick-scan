@@ -3,10 +3,10 @@ package ui
 import (
 	"testing"
 
-	"sscan/internal/scanner"
+	"quick-scan/internal/scanner"
 )
 
-// withTempCache 把设备缓存写进测试临时目录，避免碰用户真实的 %TEMP%\sscan。
+// withTempCache 把设备缓存写进测试临时目录，避免碰用户真实的 %TEMP%\quick-scan。
 func withTempCache(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()

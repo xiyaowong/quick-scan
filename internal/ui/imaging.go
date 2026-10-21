@@ -4,7 +4,7 @@ package ui
 import (
 	"image"
 
-	"sscan/internal/scanner"
+	"quick-scan/internal/scanner"
 
 	"github.com/egoist/mygo/ui"
 )

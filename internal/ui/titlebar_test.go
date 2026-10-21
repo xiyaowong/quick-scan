@@ -11,7 +11,7 @@ func TestTitleBarButtons(t *testing.T) {
 	a := newApp()
 	tt := ui.NewTester(a.view, 1200, 800)
 
-	if !tt.HasText("简易扫描") {
+	if !tt.HasText("快速扫描") {
 		t.Fatalf("标题栏没有应用名：%v", tt.Texts())
 	}
 	for _, label := range []string{"最小化", "最大化", "关闭"} {

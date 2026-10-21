@@ -37,7 +37,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"sscan/internal/platform"
+	"quick-scan/internal/platform"
 )
 
 // ocrLine 一行原始识别结果：文字、置信度、相对输入图的文字框几何。

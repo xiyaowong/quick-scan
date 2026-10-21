@@ -1,13 +1,13 @@
-// simple-scan：Windows 扫描工具。mygo UI + eSCL/mDNS，OCR 模型内嵌。
+// quick-scan：Windows 扫描工具。mygo UI + eSCL/mDNS，OCR 模型内嵌。
 package main
 
 import (
 	"fmt"
 	"os"
 
-	"sscan/internal/platform"
-	"sscan/internal/scanner"
-	appui "sscan/internal/ui"
+	"quick-scan/internal/platform"
+	"quick-scan/internal/scanner"
+	appui "quick-scan/internal/ui"
 
 	"github.com/egoist/mygo"
 	myui "github.com/egoist/mygo/ui"
@@ -44,7 +44,7 @@ func run() (err error) {
 	app := appui.New()
 	mygo.App.WhenReady(func() {
 		win := mygo.NewWindow(mygo.WindowOptions{
-			Title:          "简易扫描",
+			Title:          "快速扫描",
 			Width:          1180,
 			Height:         820,
 			UseContentSize: true,

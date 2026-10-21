@@ -16,11 +16,11 @@ BEGIN
   BEGIN
     BLOCK "080404b0"  // 简体中文 (0804) + Unicode (04b0)
     BEGIN
-      VALUE "FileDescription", "simple-scan"
-      VALUE "ProductName",     "simple-scan"
+      VALUE "FileDescription", "快速扫描"
+      VALUE "ProductName",     "quick-scan"
       VALUE "FileVersion",     "0.1.0"
       VALUE "ProductVersion",  "0.1.0"
-      VALUE "OriginalFilename","sscan.exe"
+      VALUE "OriginalFilename","quick-scan.exe"
     END
   END
   BLOCK "VarFileInfo"

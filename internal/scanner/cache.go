@@ -18,7 +18,7 @@ const (
 )
 
 var deviceCacheDir = func() string {
-	return filepath.Join(os.TempDir(), "sscan")
+	return filepath.Join(os.TempDir(), "quick-scan")
 }
 
 type deviceCacheData struct {
