@@ -83,8 +83,12 @@ ScanSettings：
 - 色彩下发设备上报的 ColorMode，缺省用规范值。
   **例外：黑白不下发 `BlackAndWhite1`**。实测 HP 116w 在能力里报了它，但配
   `image/jpeg` 时任务直接 `Aborted / JobCompletedWithErrors`，`ImagesCompleted=0`，
-  `NextDocument` 一直回 410（只肯把黑白包进 PDF）。所以黑白改成向设备要灰度，
-  本地按 Otsu 阈值二值化后存 PNG（JPEG 会把纯黑白重新变灰）。
+  `NextDocument` 一直回 410。
+- 黑白改向设备要 `Grayscale8`，本地 Otsu 二值化后存 **2 色调色板 PNG**。
+  - 不走「要 PDF 再自己转图」：这台设备在黑白 PDF 里嵌的仍是 8 位 RGB JPEG
+    （体积、耗时和灰度路线一样），只有空白页才给 1 位 CCITT-G4。同一请求两种编码，
+    再套一个 PDF 容器解析器换不来任何好处。
+  - 2 色调色板比 8 位灰度 PNG 小约 40%、编码快约 40%，像素完全一致。
 - 玻璃板 `InputSource=Platen`；进纸口 `InputSource=ADF` + `ADFMode=Simplex`。
 - Intent 不支持时退回 `Document`，再不行用设备上报的第一个。
 
