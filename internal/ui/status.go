@@ -10,8 +10,11 @@ import (
 )
 
 // 状态只由设备自己上报，所以拿它没有别的办法，只能轮询。
-// 2 秒一次：一次小的 XML 请求，换来"点扫描之前就知道忙不忙"。
-const statusPollInterval = 2 * time.Second
+// 半秒一次：一次小 XML 请求，换来"点扫描那一刻看到的就是当前状态"。
+const statusPollInterval = 520 * time.Millisecond
+
+// 单次查询的上限。必须比轮询间隔宽：设备偶发慢一点不能因此被当成"读不到"。
+const statusTimeout = 2 * time.Second
 
 type statusTarget struct {
 	idx int // 0 = 这轮没有可查的设备
@@ -77,7 +80,10 @@ func (a *app) pollStatusOnce() {
 		return
 	}
 
-	st, err := scanner.FetchStatus(context.Background(), tg.dev)
+	// 请求本身另算超时：和轮询间隔一样长的话，设备慢一点每轮都会被判成"读不到"。
+	ctx, cancel := context.WithTimeout(context.Background(), statusTimeout)
+	defer cancel()
+	st, err := scanner.FetchStatus(ctx, tg.dev)
 	Win.Update(func() {
 		// 查的是哪台就写哪台：期间换了设备，这份结果作废。
 		cur := a.current()
