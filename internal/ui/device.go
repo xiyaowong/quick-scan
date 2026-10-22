@@ -512,7 +512,7 @@ func (a *app) restoreScanPrefs(s *platform.ScanPrefs) {
 	a.feeder = s.Feeder
 }
 
-// 只记用户实际用过的组合：没选过设备就保持默认，不写文件。
+// 在 startScan 里调：真正用过的设置才值得跨会话记住。
 func (a *app) saveScanPrefs() {
 	platform.SaveScanPrefs(platform.ScanPrefs{
 		Color:  int(a.color),
@@ -548,7 +548,8 @@ func (a *app) startScan() {
 	}
 	_ = platform.EnsurePagesDir()
 	dir := platform.SessionDir()
-	a.saveCache() // 用户真正用起来的设备，下次启动优先显示
+	a.saveCache()     // 用户真正用起来的设备，下次启动优先显示
+	a.saveScanPrefs() // 真正扫过的设置才值得记：改了没扫不算数，崩溃也不丢
 
 	go func() {
 		_, err := scanner.Scan(context.Background(), &dev, opts, scanner.ScanSink{

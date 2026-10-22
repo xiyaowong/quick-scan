@@ -27,9 +27,9 @@ type ScanPrefs struct {
 }
 
 type prefsData struct {
-	Version   int         `json:"version"`
-	ExportDir string      `json:"exportDir,omitempty"`
-	Scan      *ScanPrefs  `json:"scan,omitempty"`
+	Version   int        `json:"version"`
+	ExportDir string     `json:"exportDir,omitempty"`
+	Scan      *ScanPrefs `json:"scan,omitempty"`
 }
 
 func prefsPath() string { return filepath.Join(prefsDir(), prefsFileName) }

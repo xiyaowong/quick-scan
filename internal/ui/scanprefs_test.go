@@ -1,6 +1,10 @@
 package ui
 
 import (
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"quick-scan/internal/platform"
@@ -24,21 +28,36 @@ func TestRestoreScanPrefsIgnoresInvalid(t *testing.T) {
 	}
 }
 
-func TestSaveScanPrefsRoundTrip(t *testing.T) {
+// 真正扫过才保存：startScan 里落盘，读回来要和当时一致。
+// Win 在测试里是 nil，Update 只把回调排进不会执行的事件队列，安全。
+func TestStartScanSavesScanPrefs(t *testing.T) {
+	withTempCache(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	_, portStr, _ := net.SplitHostPort(srv.Listener.Addr().String())
+	port, _ := strconv.Atoi(portStr)
+
 	a := newApp()
+	a.devices = []scanner.DeviceInfo{{Idx: 1, Name: "假设备", IP: "127.0.0.1", Port: port, Path: "eSCL", Online: true}}
+	a.devSel = 0
+	a.probed[1] = true
+	a.devState = DevOnline
 	a.color = ColorBW
 	a.size = SizeA5
 	a.dpi = 150
 	a.intent = "Photo"
 	a.feeder = true
-	a.saveScanPrefs()
 
-	b := newApp()
-	if s := platform.LoadScanPrefs(); s != nil {
-		b.restoreScanPrefs(s)
+	a.startScan()
+
+	got := platform.LoadScanPrefs()
+	if got == nil {
+		t.Fatal("startScan 没把扫描设置写盘")
 	}
-	if b.color != ColorBW || b.size != SizeA5 || b.dpi != 150 || b.intent != "Photo" || !b.feeder {
-		t.Fatalf("存取一轮后设置变了: %+v", b)
+	if got.Color != int(ColorBW) || got.Size != int(SizeA5) || got.DPI != 150 || got.Intent != "Photo" || !got.Feeder {
+		t.Fatalf("写盘的设置和当时的界面不一致: %+v", got)
 	}
 }
 
