@@ -533,7 +533,11 @@ func (a *app) startScan() {
 		return
 	}
 	a.scanning = true
+	a.stopping = false
+	a.stopRequested = false
 	a.scanProgress = 0
+	a.scanResult = false
+	a.scanResult = false // 新一次操作：上一次的结果提示不再优先
 	if a.feeder {
 		a.scanStatus = "进纸口扫描中 …"
 	} else {
@@ -554,8 +558,10 @@ func (a *app) startScan() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	a.scanCancel = cancel
+	before := len(a.pages)
 
 	go func() {
+		defer cancel() // 正常扫完也要放掉 ctx；文案只看 stopRequested
 		_, err := scanner.Scan(ctx, &dev, opts, scanner.ScanSink{
 			Dir: dir,
 			Progress: func(f float64) {
@@ -574,27 +580,35 @@ func (a *app) startScan() {
 			},
 		})
 		Win.Update(func() {
+			stopped := a.stopRequested
 			a.scanning = false
+			a.stopping = false
+			a.stopRequested = false
 			a.scanCancel = nil
-			stopped := ctx.Err() != nil
 			switch {
-			case stopped && len(a.pages) > 0:
-				a.scanStatus = "已停止，保留已扫完的页面。"
+			case err != nil:
+				// 真实错误（保存失败等）优先，别被停止文案吞掉。
+				a.scanStatus = err.Error()
+			case stopped && len(a.pages) > before:
+				a.scanStatus = "已停止，保留这次已扫完的页面。"
 			case stopped:
 				a.scanStatus = "已停止。"
-			case err != nil:
-				a.scanStatus = err.Error()
 			}
+			a.scanResult = stopped || err != nil
 			a.requestStatusRefresh() // 扫完立刻回读，别停在扫描中的"忙"上
 		})
 	}()
 }
 
-// stopScan 只发取消信号；收尾（按钮恢复、状态文案）由扫描 goroutine 回主线程做。
+// stopScan 只发取消信号并立刻给出反馈；收尾（按钮恢复、状态文案）
+// 由扫描 goroutine 回主线程做。
 func (a *app) stopScan() {
-	if a.scanCancel != nil {
-		a.scanCancel()
+	if a.scanCancel == nil || a.stopping {
+		return
 	}
+	a.stopping = true // DELETE 最多要等 3 秒，别让界面看起来没反应
+	a.stopRequested = true
+	a.scanCancel()
 }
 
 // 解码耗时，调用方负责放到后台线程。

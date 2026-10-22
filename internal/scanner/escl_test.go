@@ -13,9 +13,11 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 const capsSample = `<?xml version="1.0" encoding="UTF-8"?>
@@ -401,6 +403,71 @@ func TestScanCancelledKeepsPagesAndDeletesJob(t *testing.T) {
 	if got := atomic.LoadInt32(&fs.deleted); got != 1 {
 		t.Errorf("停止后应删任务一次，实际 %d 次", got)
 	}
+}
+
+// 一页都没到手就停：不报「缺纸」，任务照删，交回空列表。
+func TestScanCancelledBeforeFirstPage(t *testing.T) {
+	fs := newFakeScanner(t, 3)
+	block := make(chan struct{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("/eSCL/ScannerCapabilities", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		fmt.Fprint(w, capsSample)
+	})
+	mux.HandleFunc("/eSCL/ScanJobs", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", "/eSCL/ScanJobs/42")
+		w.WriteHeader(http.StatusCreated)
+	})
+	mux.HandleFunc("/eSCL/ScanJobs/42/NextDocument", func(w http.ResponseWriter, r *http.Request) {
+		<-block // 卡住取图，等测试发取消
+	})
+	mux.HandleFunc("/eSCL/ScanJobs/42", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			atomic.AddInt32(&fs.deleted, 1)
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		close(block)
+		srv.Close()
+	})
+	d := deviceOfURL(t, srv.URL)
+	if err := Probe(context.Background(), &d); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	time.AfterFunc(50*time.Millisecond, cancel)
+	files, err := Scan(ctx, &d,
+		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, ScanSink{Dir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("一页未扫就停不该报错：%v", err)
+	}
+	if len(files) != 0 {
+		t.Fatalf("应返回 0 页，实际 %d", len(files))
+	}
+	if got := atomic.LoadInt32(&fs.deleted); got != 1 {
+		t.Errorf("停止后应删任务一次，实际 %d 次", got)
+	}
+}
+
+func deviceOfURL(t *testing.T, raw string) DeviceInfo {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, portStr, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return DeviceInfo{Name: "假设备", IP: host, Port: port, Path: "eSCL"}
 }
 
 // 设备只报“扫完没有”，进度靠时间估 + 下载字节数推；这里验证它单调、有起点、收在 1。

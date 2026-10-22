@@ -247,8 +247,11 @@ type app struct {
 	pendingDelete uint64
 	scanning      bool
 	scanCancel    context.CancelFunc // 停止扫描用；不扫时为 nil
+	stopRequested bool               // 用户点了停止：收尾文案靠它，而不是 ctx.Err()
+	stopping      bool               // 停止已发出、等扫描 goroutine 收尾
 	restoring     bool               // 正在把上次崩溃遗留的页面解码回界面
 	scanStatus    string
+	scanResult    bool    // scanStatus 是用户动作的直接结果（如「已停止」）：优先于设备状态提醒
 	scanProgress  float64 // 0..1 的估算进度：设备只报扫完没有，细节靠时间和字节数推
 
 	// recoverPages 是上次异常退出留下的页面清单；用户选恢复前只占着位置，
