@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -112,7 +113,27 @@ func TestFetchStatusUsesDeviceEndpoint(t *testing.T) {
 	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "nope", http.StatusInternalServerError)
 	})
-	if _, err := FetchStatus(context.Background(), &d); err == nil {
+	_, err = FetchStatus(context.Background(), &d)
+	if err == nil {
 		t.Fatal("HTTP 500 应该报错")
+	}
+	// 设备回了话：上层不能据此判脱机。
+	if errors.Is(err, ErrUnreachable) {
+		t.Fatalf("HTTP 报错被当成了连不上：%v", err)
+	}
+}
+
+// 设备根本没应答（关机、脱机）要和端点报错分开：上层靠它决定是否标记离线。
+func TestFetchStatusUnreachable(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	u, _ := url.Parse(srv.URL)
+	host, portStr, _ := net.SplitHostPort(u.Host)
+	port, _ := strconv.Atoi(portStr)
+	srv.Close() // 端口随即关闭：连接被拒绝
+
+	d := DeviceInfo{IP: host, Port: port, Path: "eSCL"}
+	_, err := FetchStatus(context.Background(), &d)
+	if !errors.Is(err, ErrUnreachable) {
+		t.Fatalf("err = %v，want ErrUnreachable", err)
 	}
 }

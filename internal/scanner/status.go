@@ -4,6 +4,7 @@ package scanner
 import (
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,10 @@ import (
 )
 
 const statusTimeout = 4 * time.Second
+
+// ErrUnreachable 设备根本没应答：关机、脱机、掉 Wi-Fi。
+// 和 HTTP 报错分开——后者说明设备还在，只是这个端点不好使。
+var ErrUnreachable = errors.New("设备连不上")
 
 const (
 	adfProcessing = "ScannerAdfProcessing"
@@ -39,7 +44,8 @@ func (s Status) Known() bool { return s.State != "" || s.ADF != "" }
 
 func (s Status) adfIs(want string) bool { return strings.EqualFold(s.ADF, want) }
 
-// FetchStatus 失败不代表离线，离线由能力探测判断。
+// FetchStatus 的错误分两种：ErrUnreachable 说明设备不在线，
+// 其余（HTTP 报错、解析失败）说明设备还在应答。
 func FetchStatus(ctx context.Context, d *DeviceInfo) (Status, error) {
 	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
 	defer cancel()
@@ -51,7 +57,7 @@ func FetchStatus(ctx context.Context, d *DeviceInfo) (Status, error) {
 	req.Header.Set("Accept", "application/xml, text/xml")
 	resp, err := scannerHTTP.Do(req)
 	if err != nil {
-		return Status{}, fmt.Errorf("读不到设备状态：%w", err)
+		return Status{}, fmt.Errorf("%w：%v", ErrUnreachable, err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))

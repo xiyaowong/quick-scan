@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"quick-scan/internal/scanner"
@@ -13,6 +14,13 @@ const statusPollInterval = time.Second
 
 // 必须比轮询间隔宽，否则设备偶尔慢一点就被当成"读不到"。
 const statusTimeout = 2 * time.Second
+
+// 连续几次读不到状态才算脱机：偶发丢一包不该让按钮闪一下。
+const statusMissLimit = 2
+
+// 脱机后又应答时重新探测的间隔：有设备状态通得过、能力却一直失败，
+// 不加间隔就会每秒探一次。
+const reprobeGap = 10 * time.Second
 
 type statusTarget struct {
 	idx int
@@ -63,17 +71,50 @@ func (a *app) pollStatusOnce() {
 	ctx, cancel := context.WithTimeout(context.Background(), statusTimeout)
 	defer cancel()
 	st, err := scanner.FetchStatus(ctx, tg.dev)
-	Win.Update(func() {
-		cur := a.current()
-		if cur == nil || cur.Idx != tg.idx {
-			return // 期间换了设备
+	Win.Update(func() { a.applyStatusResult(tg.idx, st, err) })
+}
+
+// 只能在主线程调。
+func (a *app) applyStatusResult(idx int, st scanner.Status, err error) {
+	cur := a.current()
+	if cur == nil || cur.Idx != idx {
+		return // 期间换了设备
+	}
+	if err != nil {
+		a.devStatus, a.devStatusIdx = scanner.Status{}, 0
+		// 连不上不等于脱机：设备也能只是这个端点忙。
+		// 连续几次都没应答才算掉线，恢复一次就清零。
+		if errors.Is(err, scanner.ErrUnreachable) {
+			a.statusMiss++
+		} else {
+			a.statusMiss = 0
 		}
-		if err != nil {
-			a.devStatus, a.devStatusIdx = scanner.Status{}, 0
-			return
+		if a.statusMiss >= statusMissLimit {
+			a.markOffline(cur)
 		}
-		a.devStatus, a.devStatusIdx = st, tg.idx
-	})
+		return
+	}
+	a.statusMiss = 0
+	a.devStatus, a.devStatusIdx = st, idx
+	if a.devState == DevOffline && time.Since(a.lastReprobe) > reprobeGap {
+		// 又应答了：重新探一次，把能力、在线状态一起补回来。
+		a.lastReprobe = time.Now()
+		a.requestProbe(idx, true)
+	}
+}
+
+// 脱机就在当下生效：状态灯变红、扫描按钮灰掉，不等用户点「刷新」。
+// 还在扫描就等这一次扫完——中途断线由扫描自己的错误来说。
+func (a *app) markOffline(d *scanner.DeviceInfo) {
+	a.statusMiss = 0
+	if a.scanning || a.devState != DevOnline {
+		return
+	}
+	d.Online = false
+	a.devStatus, a.devStatusIdx = scanner.Status{}, 0
+	a.refreshState()
+	a.sortDevices()
+	a.saveCache()
 }
 
 // 端点在主线程上拷贝，协程只读副本。
@@ -81,7 +122,8 @@ func (a *app) snapshotStatusTarget() statusTarget {
 	got := make(chan statusTarget, 1)
 	Win.Update(func() {
 		d := a.current()
-		if d == nil || a.devState != DevOnline {
+		// 脱机后继续探：状态请求本身就是最轻的在线检查，能回来就自动恢复。
+		if d == nil || (a.devState != DevOnline && a.devState != DevOffline) {
 			got <- statusTarget{}
 			return
 		}
