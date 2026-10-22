@@ -94,6 +94,15 @@ package: build
     Write-Host ''; \
     Write-Host "打包完成：$zip（$([math]::Round((Get-Item $zip).Length / 1MB, 1)) MB）"
 
+# ── 安装包（dist\quick-scan-<版本>-setup.exe，NSIS + 简体中文）──
+# 安装包只打根目录的 quick-scan.exe（upx 的压缩版在 dist\，不能进安装包）
+installer: build
+    if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) { throw '未找到 makensis：scoop install nsis' }; \
+    $ver = (((Select-String -Path app.rc -Pattern 'PRODUCTVERSION\s+([\d,]+)').Matches[0].Groups[1].Value -split ',')[0..2] -join '.'); \
+    makensis /V2 /DVERSION=$ver installer.nsi; \
+    if ($LASTEXITCODE -ne 0) { throw 'makensis 编安装包失败' }; \
+    Write-Host "安装包完成：dist\quick-scan-$ver-setup.exe"
+
 # ── UPX 压缩发布版（可选）──
 # 只用 NRV + --best：体积约减半，启动多 ~0.2 秒。
 # 不要加 --lzma：只再小 1.7MB，启动却多 ~0.8 秒（实测：0.30 → 0.51 → 1.12 秒）。

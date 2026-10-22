@@ -35,13 +35,17 @@ Windows 10 / 11（64 位）。打印机需要支持 eSCL / AirPrint 扫描，并
 
 ## 构建
 
-需要 Go 1.27+、Rust、LLVM `clang` 和 `windres`。
+需要 Go 1.27+、Rust、LLVM `clang` 和 `windres`。做安装包还需要 NSIS（`scoop install nsis`）。
 
 ```powershell
-just build   # 产物：quick-scan.exe
-just test    # 单测，不需要真机
-just run     # 构建并启动
+just build      # 产物：quick-scan.exe
+just installer  # 产物：dist\quick-scan-<版本>-setup.exe
+just test       # 单测，不需要真机
+just run        # 构建并启动
 ```
+
+安装包按当前用户安装到 `%LOCALAPPDATA%\Programs\quick-scan`，不需要管理员权限，
+卸载时会一并清掉快捷方式、注册表项和临时目录里的残留。
 
 ## 目录
 
@@ -49,3 +53,4 @@ just run     # 构建并启动
 - `internal/ui/` 界面与交互
 - `internal/scanner/` eSCL 发现、扫描、导出、OCR
 - `internal/platform/` 会话目录、内嵌模型、控制台脱离
+- `installer.nsi` NSIS 安装包脚本
