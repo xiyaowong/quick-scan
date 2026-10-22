@@ -245,11 +245,11 @@ type app struct {
 	selected map[uint64]bool
 	// pendingDelete 是右键菜单选中的删除：等这一轮格子建完再删，免得建到一半缩短 pages。
 	pendingDelete uint64
-	scanning     bool
-	scanCancel   context.CancelFunc // 停止扫描用；不扫时为 nil
-	restoring    bool               // 正在把上次崩溃遗留的页面解码回界面
-	scanStatus   string
-	scanProgress float64 // 0..1 的估算进度：设备只报扫完没有，细节靠时间和字节数推
+	scanning      bool
+	scanCancel    context.CancelFunc // 停止扫描用；不扫时为 nil
+	restoring     bool               // 正在把上次崩溃遗留的页面解码回界面
+	scanStatus    string
+	scanProgress  float64 // 0..1 的估算进度：设备只报扫完没有，细节靠时间和字节数推
 
 	// recoverPages 是上次异常退出留下的页面清单；用户选恢复前只占着位置，
 	// 不建缩略图也不进 pages，免得恢复到一半又把半份数据当成正常状态。
