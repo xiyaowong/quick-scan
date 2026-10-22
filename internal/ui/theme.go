@@ -24,6 +24,7 @@ var (
 	colOk         = ui.Hex("#07C160")
 	colOkSoft     = ui.Hex("#E8F7EE")
 	colWarn       = ui.Hex("#FA9D3B")
+	colWarnSoft   = ui.Hex("#FFF6EC")
 
 	shadowSoft   = ui.RGBA(0, 0, 0, 0.04)
 	shadowCard   = ui.RGBA(0, 0, 0, 0.08)

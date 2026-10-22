@@ -43,6 +43,26 @@
 - HTTP 通了就算在线；能力解析失败只表示选项全开，不标离线。
 - 字段缺失不限制选项。
 
+## 设备状态（ScannerStatus）
+
+`GET http://<ip>:<port>/<rs>/ScannerStatus`，取根节点的 `pwg:State` 和 `scan:AdfState`。
+`Jobs` 里每条的 `pwg:JobState` 不能混进来，所以只解析这两个字段。
+
+| 读取 | 界面 |
+|---|---|
+| `State=processing` 或 `AdfState=ScannerAdfProcessing` | 「正在忙」，扫描按钮置灰 |
+| `State=stopped` | 「需要检查」，红色提示卡纸/盖子 |
+| `AdfState=ScannerAdfJam`（进纸口模式） | 「进纸口卡纸」，红色 |
+| `AdfState=ScannerAdfDoorOpen`（进纸口模式） | 「进纸口没关好」，红色 |
+| 读不到 / 字段缺失 | 状态栏不显示，**不拦扫描** |
+
+- 只跟扫描直接相关的状态：`AdfState=ScannerAdfEmpty`（进纸口没纸）**不显示也不拦**，
+  否则用户会疑惑"没纸？"，而且玻璃板扫描也会被一起挡住。
+- 起一条独立的轮询协程，每 2 秒查一次；探测成功、换设备、扫完之后插队再查一次。
+  轮询和扫描流程互不相干，不会因为扫描卡住就停在过期的状态上。
+- 状态跟着 `DeviceInfo.Idx` 记：换设备后旧状态作废，不能拿上一台的「忙」拦住新设备。
+- 读不到状态不等于离线；离线仍由能力探测判断。有些不报状态的设备不能因此被锁死。
+
 ## 扫描任务
 
 1. `POST /<rs>/ScanJobs`（`text/xml`），返回 201 + `Location`。
