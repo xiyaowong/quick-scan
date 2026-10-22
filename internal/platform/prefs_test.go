@@ -99,4 +99,8 @@ func TestScanPrefsRoundTrip(t *testing.T) {
 	if LoadExportDir() == "" {
 		t.Fatal("存扫描设置抹掉了导出目录")
 	}
+	SaveExportDir(t.TempDir())
+	if got = LoadScanPrefs(); got == nil || *got != (ScanPrefs{Color: 2, Size: 1, DPI: 600, Intent: "Photo", Feeder: true}) {
+		t.Fatalf("存导出目录抹掉了扫描设置: %+v", got)
+	}
 }

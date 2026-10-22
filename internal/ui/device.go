@@ -493,7 +493,8 @@ func (a *app) applyDefaults(li int) {
 	}
 }
 
-// 恢复上次会话记下的扫描设置；无效值回退到 newApp 的默认。
+// 恢复上次会话记下的扫描设置；越界的枚举当场丢弃回退默认，
+// DPI/Intent 不在此校验——换设备后由 applyDefaults 和界面下拉校准。
 func (a *app) restoreScanPrefs(s *platform.ScanPrefs) {
 	switch s.Color {
 	case int(ColorColor), int(ColorGray), int(ColorBW):

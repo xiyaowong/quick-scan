@@ -36,8 +36,14 @@ func TestStartScanSavesScanPrefs(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 	t.Cleanup(srv.Close)
-	_, portStr, _ := net.SplitHostPort(srv.Listener.Addr().String())
-	port, _ := strconv.Atoi(portStr)
+	_, portStr, err := net.SplitHostPort(srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	a := newApp()
 	a.devices = []scanner.DeviceInfo{{Idx: 1, Name: "假设备", IP: "127.0.0.1", Port: port, Path: "eSCL", Online: true}}
