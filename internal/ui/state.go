@@ -220,8 +220,12 @@ type app struct {
 	// devStatusIdx 决定这份状态算不算数：换设备后旧状态不能继续冒充。
 	devStatus    scanner.Status
 	devStatusIdx int
-	statusKick   chan struct{} // nil = 没起轮询
-	autoQueue    []int         // 非空 = 正在按名单顺序找第一台在线的；存 Idx，列表重排后仍稳定
+	// statusMiss 连续几次没读到状态：一次没应答可能是设备忙，连续几次才当脱机。
+	statusMiss int
+	// lastReprobe 上一次为「脱机后又应答」发起的探测。
+	lastReprobe time.Time
+	statusKick  chan struct{} // nil = 没起轮询
+	autoQueue   []int         // 非空 = 正在按名单顺序找第一台在线的；存 Idx，列表重排后仍稳定
 	// userPicked 用户手动选过设备：接力让位，不再自动改选中项。重新检测时清零。
 	userPicked   bool
 	pendingProbe bool         // 探测期间又切了设备：上一个回来后补探
@@ -334,6 +338,7 @@ func (a *app) refreshState() {
 	d := a.current()
 	if d == nil || a.devStatusIdx != d.Idx {
 		a.devStatus, a.devStatusIdx = scanner.Status{}, 0 // 换了设备，旧状态作废
+		a.statusMiss = 0
 	}
 	if d == nil {
 		a.devState = DevUnknown
