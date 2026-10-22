@@ -5,6 +5,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"time"
 
 	"quick-scan/internal/platform"
 	"quick-scan/internal/scanner"
@@ -533,7 +534,12 @@ func (a *app) startScan() {
 		return
 	}
 	a.scanning = true
+	a.stopping = false
+	a.stopRequested = false
+	a.scanResult = false // 新一次操作：上一次的结果提示不再优先
 	a.scanProgress = 0
+	a.scanStarted = time.Now()
+	a.batchPages = 0
 	if a.feeder {
 		a.scanStatus = "进纸口扫描中 …"
 	} else {
@@ -552,8 +558,12 @@ func (a *app) startScan() {
 	a.saveCache()     // 用户真正用起来的设备，下次启动优先显示
 	a.saveScanPrefs() // 真正扫过的设置才值得记：改了没扫不算数，崩溃也不丢
 
+	ctx, cancel := context.WithCancel(context.Background())
+	a.scanCancel = cancel
+
 	go func() {
-		_, err := scanner.Scan(context.Background(), &dev, opts, scanner.ScanSink{
+		defer cancel() // 正常扫完也要放掉 ctx；文案只看 stopRequested
+		_, err := scanner.Scan(ctx, &dev, opts, scanner.ScanSink{
 			Dir: dir,
 			Progress: func(f float64) {
 				Win.Update(func() { a.scanProgress = f })
@@ -566,18 +576,49 @@ func (a *app) startScan() {
 						a.scanStatus = "扫描结果读取失败：" + perr.Error()
 						return
 					}
+					a.batchPages++
 					a.appendPage(p)
 				})
 			},
 		})
 		Win.Update(func() {
+			stopped := a.stopRequested
 			a.scanning = false
-			if err != nil {
+			a.stopping = false
+			a.stopRequested = false
+			a.scanCancel = nil
+			switch {
+			case err != nil:
+				// 真实错误（保存失败等）优先，别被停止文案吞掉。
 				a.scanStatus = err.Error()
+			case stopped && a.batchPages > 0:
+				a.scanStatus = "已停止，保留这次已扫完的页面。"
+			case stopped:
+				a.scanStatus = "已停止。"
 			}
+			a.scanResult = stopped || err != nil
 			a.requestStatusRefresh() // 扫完立刻回读，别停在扫描中的"忙"上
 		})
 	}()
+}
+
+// doubleClickGuard 是扫描刚开始的这段防护：停止按钮就长在「扫描」原来的位置，
+// 双击的第二下按下时指针下面已经是它，不挡就会把刚启动的扫描立刻停掉。
+const doubleClickGuard = 400 * time.Millisecond
+
+// stopScan 只发取消信号并立刻给出反馈；收尾（按钮恢复、状态文案）
+// 由扫描 goroutine 回主线程做。
+func (a *app) stopScan() {
+	if a.scanCancel == nil || a.stopping {
+		return
+	}
+	// 刚启动的那一下多半是双击的后半拍或按键重复，不能当真。
+	if time.Since(a.scanStarted) < doubleClickGuard {
+		return
+	}
+	a.stopping = true // DELETE 最多要等 3 秒，别让界面看起来没反应
+	a.stopRequested = true
+	a.scanCancel()
 }
 
 // 解码耗时，调用方负责放到后台线程。

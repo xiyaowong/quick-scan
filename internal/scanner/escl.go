@@ -486,9 +486,10 @@ func Scan(ctx context.Context, d *DeviceInfo, opts Options, sink ScanSink) (_ []
 	if err != nil {
 		return nil, err
 	}
-	// 只在半路失败时才删任务。正常扫完由设备自己收尾，删了反而被记成「用户取消」。
+	// 半路退出（失败或用户停止）都删任务。正常扫完由设备自己收尾，
+	// 删了反而被记成「用户取消」。
 	defer func() {
-		if err != nil {
+		if err != nil || ctx.Err() != nil {
 			cancelScanJob(jobURL)
 		}
 	}()
@@ -508,6 +509,10 @@ func Scan(ctx context.Context, d *DeviceInfo, opts Options, sink ScanSink) (_ []
 			report(base + (1-base)*span*f)
 		})
 		if err != nil {
+			if ctx.Err() != nil {
+				// 用户停止：已落盘的页照常交付，任务交给 defer 里的 DELETE 收尾。
+				return files, nil
+			}
 			return nil, err
 		}
 		if data == nil {
@@ -530,7 +535,7 @@ func Scan(ctx context.Context, d *DeviceInfo, opts Options, sink ScanSink) (_ []
 		base += (1 - base) * span
 		report(base)
 	}
-	if len(files) == 0 {
+	if len(files) == 0 && ctx.Err() == nil {
 		return nil, errors.New("扫描仪没有返回任何页面（可能缺纸）")
 	}
 	report(1)

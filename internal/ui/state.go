@@ -1,9 +1,11 @@
 package ui
 
 import (
+	"context"
 	"image"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"quick-scan/internal/platform"
 	"quick-scan/internal/scanner"
@@ -244,11 +246,16 @@ type app struct {
 	selected map[uint64]bool
 	// pendingDelete 是右键菜单选中的删除：等这一轮格子建完再删，免得建到一半缩短 pages。
 	pendingDelete uint64
-
-	scanning     bool
-	restoring    bool // 正在把上次崩溃遗留的页面解码回界面
-	scanStatus   string
-	scanProgress float64 // 0..1 的估算进度：设备只报扫完没有，细节靠时间和字节数推
+	scanning      bool
+	scanCancel    context.CancelFunc // 停止扫描用；不扫时为 nil
+	scanStarted   time.Time          // 本批开始时刻：双击防护用
+	batchPages    int                // 本批已落盘的页数：停止文案按它判定
+	stopRequested bool               // 用户点了停止：收尾文案靠它，而不是 ctx.Err()
+	stopping      bool               // 停止已发出、等扫描 goroutine 收尾
+	restoring     bool               // 正在把上次崩溃遗留的页面解码回界面
+	scanStatus    string
+	scanResult    bool    // scanStatus 是用户动作的直接结果（如「已停止」）：优先于设备状态提醒
+	scanProgress  float64 // 0..1 的估算进度：设备只报扫完没有，细节靠时间和字节数推
 
 	// recoverPages 是上次异常退出留下的页面清单；用户选恢复前只占着位置，
 	// 不建缩略图也不进 pages，免得恢复到一半又把半份数据当成正常状态。

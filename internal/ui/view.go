@@ -373,10 +373,15 @@ func (a *app) sourceField(c *ui.Context) {
 }
 
 func (a *app) scanButton(c *ui.Context) {
+	// 扫描中按钮变成「停止」：放错纸不用等整叠扫完再删。
+	if a.scanning {
+		a.stopScanButton(c)
+		return
+	}
 	off := a.devState != DevOnline
 	issue := a.scanIssue()
 	blocked := issue.Text != ""
-	busy := a.scanning || a.probing || a.restoring
+	busy := a.probing || a.restoring
 	disabled := off || busy || blocked
 	label := "扫　描"
 	switch {
@@ -384,8 +389,6 @@ func (a *app) scanButton(c *ui.Context) {
 		label = "连接设备…"
 	case a.restoring:
 		label = "恢复页面…"
-	case a.scanning:
-		label = "扫描中…"
 	}
 
 	b := ui.ButtonBase(c).FillWidth().Height(44).Radius(8).Disabled(disabled).
@@ -406,12 +409,44 @@ func (a *app) scanButton(c *ui.Context) {
 	}
 }
 
+func (a *app) stopScanButton(c *ui.Context) {
+	// Key 必须和扫描按钮不同：两者是同一位置的同类元素，
+	// 不换 Key 就会继承上一帧的点击态，双击/按住回车会立刻把刚启动的扫描停掉。
+	b := ui.ButtonBase(c).Key("stop-scan").FillWidth().Height(44).Radius(8).
+		Disabled(a.stopping).
+		Transition(ui.ElementTransition{Duration: 140 * time.Millisecond, Colors: true})
+	fg := paintButton(b, toneDanger, a.stopping)
+	label := "停　止"
+	if a.stopping {
+		label = "正在停止…"
+	}
+	b.Children(func() {
+		ui.Row(c).Gap(9).AlignItems(ui.Center).Children(func() {
+			if a.stopping {
+				loading.Arc(c, loading.Options{Size: 15.5, Color: fg}).Label(label)
+			} else {
+				ui.Icon(c, icoStop).FontSize(15).TextColor(fg)
+			}
+			ui.Text(c, label).FontSize(14).FontWeight(600).TextColor(fg).LetterSpacing(1.1)
+		})
+	})
+	if b.Clicked() {
+		a.stopScan()
+	}
+}
+
 func (a *app) scanFeedback(c *ui.Context) {
 	issue := a.scanIssue()
 	switch {
 	case a.scanning:
 		// 估算值，不给百分比数字。
 		ui.Progress(c, a.scanProgress).FillWidth()
+	case a.scanResult && a.scanStatus != "" && !issue.Danger:
+		// 用户刚停下/扫完的结果优先：设备这时多半还报「忙」。
+		// 但卡纸、停住这类危险提示不能压：那是按钮变灰的原因。
+		ui.Row(c).FillWidth().Justify(ui.Center).Children(func() {
+			ui.Text(c, a.scanStatus).FontSize(11.5).TextColor(colMuted).TextAlign(ui.Center)
+		})
 	case a.devState == DevOffline && !a.probing:
 		notice(c, icoAlert, "这台打印机连不上，换一台试试。", colDanger, colDangerSoft)
 	case issue.Text != "":
