@@ -585,8 +585,11 @@ func (a *app) statusBar(c *ui.Context) {
 
 		ui.Row(c).Grow(1)
 		if a.hint != "" {
-			ui.Text(c, a.hint).FontSize(11.5).TextColor(colMuted).
+			t := ui.Text(c, a.hint).FontSize(11.5).TextColor(colMuted).
 				TextAlign(ui.End).MaxWidth(430).SingleLine()
+			if a.hintDetail != "" {
+				t.Tooltip(a.hintDetail)
+			}
 		}
 	})
 }

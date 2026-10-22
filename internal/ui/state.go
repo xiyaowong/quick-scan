@@ -228,12 +228,14 @@ type app struct {
 	netScanning  bool // 正在扫网段兜底
 	devGrid      ui.GridState
 	// hint 是状态栏右侧唯一的一行提示：检测进度、正在连哪台、失败原因。
-	hint   string
-	size   PaperSize
-	dpi    int    // 设备支持的清晰度（见 DeviceInfo.DPIs）
-	intent string // eSCL Intent，默认 Document
-	color  ColorMode
-	feeder bool // false=玻璃板 true=进纸口
+	// hintDetail 是它的补充详情（原始错误），鼠标悬停时显示。
+	hint       string
+	hintDetail string
+	size       PaperSize
+	dpi        int    // 设备支持的清晰度（见 DeviceInfo.DPIs）
+	intent     string // eSCL Intent，默认 Document
+	color      ColorMode
+	feeder     bool // false=玻璃板 true=进纸口
 
 	pages      []Page
 	nextPageID uint64
