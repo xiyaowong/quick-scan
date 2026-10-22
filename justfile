@@ -46,10 +46,12 @@ icon:
 #   贴靠布局也一起失效。Windows 8（6.2）起才支持，这里取 10.0 与内部链接器对齐。
 # cgo：CC 会原样传给 clang 侧的驱动，路径带空格时必须自带引号，
 # 否则 cgo 按空格切词，报 "C:\Program" 找不到（CI 的 clang 在 Program Files 下）。
+# -fuse-ld=lld：不让 clang 落到 MSVC 的 link.exe 上，它读不了 Go 给的 .ld 响应文件
+# （CI 上报 LNK1107: invalid or corrupt file）。lld-link 随 LLVM 一起安装。
 ui: icon ocr
     $env:CGO_ENABLED = '1'; \
     $env:GOARCH = 'amd64'; \
-    $env:CGO_LDFLAGS = '-Xlinker /subsystem:console,10.0'; \
+    $env:CGO_LDFLAGS = '-Xlinker /subsystem:console,10.0 -fuse-ld=lld'; \
     $ver = (((Select-String -Path app.rc -Pattern 'PRODUCTVERSION\s+([\d,]+)').Matches[0].Groups[1].Value -split ',')[0..2] -join '.'); \
     if (-not $env:CC) { $env:CC = if (Get-Command clang -ErrorAction SilentlyContinue) { (Get-Command clang).Source } else { 'D:\Scoop\apps\llvm\current\bin\clang.exe' } }; \
     if ($env:CC -match '\s' -and $env:CC -notmatch '^"') { $env:CC = '"' + $env:CC + '"' }; \
