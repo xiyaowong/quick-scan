@@ -381,8 +381,10 @@ func (a *app) sourceField(c *ui.Context) {
 
 func (a *app) scanButton(c *ui.Context, t *ui.Theme) {
 	off := a.devState != DevOnline
+	issue := a.scanIssue()
+	blocked := issue.Text != ""
 	busy := a.scanning || a.probing || a.restoring
-	disabled := off || busy
+	disabled := off || busy || blocked
 	label := "扫　描"
 	switch {
 	case a.probing:
@@ -426,12 +428,20 @@ func (a *app) scanButton(c *ui.Context, t *ui.Theme) {
 }
 
 func (a *app) scanFeedback(c *ui.Context) {
+	issue := a.scanIssue()
 	switch {
 	case a.scanning:
 		// 设备不报扫到第几行，这是估算值，所以不给百分比数字。
 		ui.Progress(c, a.scanProgress).FillWidth()
 	case a.devState == DevOffline && !a.probing:
 		notice(c, icoAlert, "这台打印机连不上，换一台试试。", colDanger, colDangerSoft)
+	case issue.Text != "":
+		// 按钮灰了，不说原因用户只会觉得点不动。
+		fg, bg := colWarn, colWarnSoft
+		if issue.Danger {
+			fg, bg = colDanger, colDangerSoft
+		}
+		notice(c, icoAlert, issue.Text, fg, bg)
 	case a.scanStatus != "":
 		ui.Row(c).FillWidth().Justify(ui.Center).Children(func() {
 			ui.Text(c, a.scanStatus).FontSize(11.5).TextColor(colMuted).TextAlign(ui.Center)
@@ -563,12 +573,17 @@ func (a *app) statusBar(c *ui.Context, t *ui.Theme) {
 						a.devSel = i
 						a.refreshState()
 						a.probeSelected() // 选谁才探谁——连接成本只在用户点了它时付
+						a.requestStatusRefresh() // 换设备后立刻取状态
 						break
 					}
 				}
 			}
 		} else {
 			ui.Text(c, "还没找到打印机").FontSize(12).TextColor(colMuted)
+		}
+
+		if text, fg, bg := a.printerState(); text != "" {
+			printerPill(c, text, fg, bg)
 		}
 
 		btn := ui.ButtonBase(c).Height(32).Padding(0, 11, 0, 11).Radius(7).Disabled(a.detecting || a.netScanning).

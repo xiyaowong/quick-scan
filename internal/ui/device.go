@@ -19,6 +19,7 @@ func (a *app) startup() {
 		a.probeCached()
 	}
 	a.startDetect()
+	a.startStatusPoll()
 }
 
 // netScanHint 网段扫描时的状态栏提示：mDNS 没结果时让用户知道还在找。
@@ -370,6 +371,9 @@ func (a *app) requestProbe(idx int, auto bool) {
 			a.refreshState()
 			a.sortDevices()
 			a.saveCache()
+			if ok {
+				a.requestStatusRefresh() // 刚连上先报一次，不等下一轮
+			}
 			a.advanceProbe(auto && !ok)
 		})
 	}()
@@ -496,6 +500,10 @@ func (a *app) startScan() {
 	if a.scanning || a.restoring || a.devState != DevOnline {
 		return
 	}
+	// 按钮已按状态灰掉；这里再挡一次，防止点击和状态更新抢在同一帧。
+	if a.scanIssue().Text != "" {
+		return
+	}
 	a.scanning = true
 	a.scanProgress = 0
 	if a.feeder {
@@ -534,6 +542,7 @@ func (a *app) startScan() {
 			if err != nil {
 				a.scanStatus = err.Error()
 			}
+			a.requestStatusRefresh() // 扫完立刻回读，别停在扫描中的"忙"上
 		})
 	}()
 }

@@ -216,6 +216,10 @@ type app struct {
 	probing    bool // 正在探测选中的设备
 	probeSeq   int  // 探测序号：列表重建时 +1，旧探测回调据此不动新状态
 	probingIdx int  // 正在探测的设备 Idx（0=没有）；合并时别把它当陈旧缓存删掉
+	// devStatusIdx 决定这份状态算不算数：换设备后旧状态不能继续冒充。
+	devStatus    scanner.Status
+	devStatusIdx int
+	statusKick   chan struct{} // nil = 没起轮询
 	// autoQueue 非空 = 正在按名单顺序找第一台在线的；存 Idx，列表重排后仍稳定。
 	autoQueue []int
 	// userPicked 用户手动选过设备：接力让位，不再自动改选中项。重新检测时清零。
@@ -322,6 +326,9 @@ func (a *app) saveCache() {
 
 func (a *app) refreshState() {
 	d := a.current()
+	if d == nil || a.devStatusIdx != d.Idx {
+		a.devStatus, a.devStatusIdx = scanner.Status{}, 0 // 换了设备，旧状态作废
+	}
 	if d == nil {
 		a.devState = DevUnknown
 		return

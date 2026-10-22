@@ -218,6 +218,13 @@ func statusDot(c *ui.Context, color ui.Color) {
 	})
 }
 
+// 状态栏里的打印机状态，比左边的绿点更具体。
+func printerPill(c *ui.Context, text string, fg, bg ui.Color) {
+	ui.Row(c).Padding(5, 10, 5, 10).Radius(999).Background(bg).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, text).FontSize(11).FontWeight(500).TextColor(fg).SingleLine()
+	})
+}
+
 func notice(c *ui.Context, ic *ui.SVG, text string, fg, bg ui.Color) {
 	ui.Row(c).FillWidth().AlignItems(ui.Start).Gap(9).Padding(10, 12, 10, 12).
 		Radius(9).Background(bg).Children(func() {
