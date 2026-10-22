@@ -15,21 +15,16 @@ func TestStopButtonDuringScan(t *testing.T) {
 		t.Fatalf("扫描中该显示停止按钮：%v", tt.Texts())
 	}
 
-	// 收起扫描态、模拟收尾：停止后该回到扫描按钮。
-	a.scanning = false
-	a.scanStatus = "已停止。"
-	a.scanResult = true
+	// 停止已发出但还没收尾：按钮该是「正在停止…」且不可再点。
+	a.stopping = true
 	tt2 := ui.NewTester(a.view, 1200, 800)
-	if !tt2.HasText("扫　描") {
-		t.Fatalf("停止后该回到扫描按钮：%v", tt2.Texts())
-	}
-	if !tt2.HasText("已停止。") {
-		t.Fatalf("停止结果该显示出来：%v", tt2.Texts())
+	if !tt2.HasText("正在停止…") {
+		t.Fatalf("停止后该有反馈：%v", tt2.Texts())
 	}
 }
 
-// 停止按钮和扫描按钮是同一位置的同类元素：不换 Key 会继承点击态，
-// 双击「扫描」的第二下会落到停止上，把刚启动的扫描停掉。
+// 扫描刚开始的一下点击不能把扫描停掉：停止按钮就长在「扫描」原来的位置，
+// 双击的第二下、按住回车的重复都会落到它上面。
 func TestScanClickDoesNotStopScan(t *testing.T) {
 	withTempCache(t)
 	a := onlineApp(false)
@@ -43,8 +38,11 @@ func TestScanClickDoesNotStopScan(t *testing.T) {
 	if !a.scanning {
 		t.Fatal("点击没启动扫描")
 	}
-	if a.stopRequested {
-		t.Fatal("扫描刚启动就被停掉了：两个按钮共用了元素身份")
+	// 同一位置再按一次（双击的后半拍）：不能停。
+	if err := tt.Click("停　止"); err == nil {
+		if a.stopRequested {
+			t.Fatal("双击把刚启动的扫描停掉了")
+		}
 	}
 	a.stopScan() // 收尾，别让后台 goroutine 拖着
 }

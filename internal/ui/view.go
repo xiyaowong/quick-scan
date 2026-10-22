@@ -441,8 +441,9 @@ func (a *app) scanFeedback(c *ui.Context) {
 	case a.scanning:
 		// 估算值，不给百分比数字。
 		ui.Progress(c, a.scanProgress).FillWidth()
-	case a.scanResult && a.scanStatus != "":
-		// 用户刚停下/扫完的结果优先：设备这时多半还报「忙」，压住它就没反馈了。
+	case a.scanResult && a.scanStatus != "" && !issue.Danger:
+		// 用户刚停下/扫完的结果优先：设备这时多半还报「忙」。
+		// 但卡纸、停住这类危险提示不能压：那是按钮变灰的原因。
 		ui.Row(c).FillWidth().Justify(ui.Center).Children(func() {
 			ui.Text(c, a.scanStatus).FontSize(11.5).TextColor(colMuted).TextAlign(ui.Center)
 		})

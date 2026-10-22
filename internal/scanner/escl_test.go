@@ -17,7 +17,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 )
 
 const capsSample = `<?xml version="1.0" encoding="UTF-8"?>
@@ -407,7 +406,8 @@ func TestScanCancelledKeepsPagesAndDeletesJob(t *testing.T) {
 
 // 一页都没到手就停：不报「缺纸」，任务照删，交回空列表。
 func TestScanCancelledBeforeFirstPage(t *testing.T) {
-	fs := newFakeScanner(t, 3)
+	var deleted int32
+	started := make(chan struct{})
 	block := make(chan struct{})
 	mux := http.NewServeMux()
 	mux.HandleFunc("/eSCL/ScannerCapabilities", func(w http.ResponseWriter, r *http.Request) {
@@ -419,11 +419,12 @@ func TestScanCancelledBeforeFirstPage(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	})
 	mux.HandleFunc("/eSCL/ScanJobs/42/NextDocument", func(w http.ResponseWriter, r *http.Request) {
-		<-block // 卡住取图，等测试发取消
+		close(started) // 任务已建好、取图卡住：这时取消最稳
+		<-block
 	})
 	mux.HandleFunc("/eSCL/ScanJobs/42", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodDelete {
-			atomic.AddInt32(&fs.deleted, 1)
+			atomic.AddInt32(&deleted, 1)
 		}
 		w.WriteHeader(http.StatusOK)
 	})
@@ -439,7 +440,10 @@ func TestScanCancelledBeforeFirstPage(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	time.AfterFunc(50*time.Millisecond, cancel)
+	go func() {
+		<-started
+		cancel()
+	}()
 	files, err := Scan(ctx, &d,
 		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, ScanSink{Dir: t.TempDir()})
 	if err != nil {
@@ -448,7 +452,7 @@ func TestScanCancelledBeforeFirstPage(t *testing.T) {
 	if len(files) != 0 {
 		t.Fatalf("应返回 0 页，实际 %d", len(files))
 	}
-	if got := atomic.LoadInt32(&fs.deleted); got != 1 {
+	if got := atomic.LoadInt32(&deleted); got != 1 {
 		t.Errorf("停止后应删任务一次，实际 %d 次", got)
 	}
 }

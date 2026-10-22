@@ -5,6 +5,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"time"
 
 	"quick-scan/internal/platform"
 	"quick-scan/internal/scanner"
@@ -535,9 +536,10 @@ func (a *app) startScan() {
 	a.scanning = true
 	a.stopping = false
 	a.stopRequested = false
-	a.scanProgress = 0
-	a.scanResult = false
 	a.scanResult = false // 新一次操作：上一次的结果提示不再优先
+	a.scanProgress = 0
+	a.scanStarted = time.Now()
+	a.batchPages = 0
 	if a.feeder {
 		a.scanStatus = "进纸口扫描中 …"
 	} else {
@@ -558,7 +560,6 @@ func (a *app) startScan() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	a.scanCancel = cancel
-	before := len(a.pages)
 
 	go func() {
 		defer cancel() // 正常扫完也要放掉 ctx；文案只看 stopRequested
@@ -575,6 +576,7 @@ func (a *app) startScan() {
 						a.scanStatus = "扫描结果读取失败：" + perr.Error()
 						return
 					}
+					a.batchPages++
 					a.appendPage(p)
 				})
 			},
@@ -589,7 +591,7 @@ func (a *app) startScan() {
 			case err != nil:
 				// 真实错误（保存失败等）优先，别被停止文案吞掉。
 				a.scanStatus = err.Error()
-			case stopped && len(a.pages) > before:
+			case stopped && a.batchPages > 0:
 				a.scanStatus = "已停止，保留这次已扫完的页面。"
 			case stopped:
 				a.scanStatus = "已停止。"
@@ -600,10 +602,18 @@ func (a *app) startScan() {
 	}()
 }
 
+// doubleClickGuard 是扫描刚开始的这段防护：停止按钮就长在「扫描」原来的位置，
+// 双击的第二下按下时指针下面已经是它，不挡就会把刚启动的扫描立刻停掉。
+const doubleClickGuard = 400 * time.Millisecond
+
 // stopScan 只发取消信号并立刻给出反馈；收尾（按钮恢复、状态文案）
 // 由扫描 goroutine 回主线程做。
 func (a *app) stopScan() {
 	if a.scanCancel == nil || a.stopping {
+		return
+	}
+	// 刚启动的那一下多半是双击的后半拍或按键重复，不能当真。
+	if time.Since(a.scanStarted) < doubleClickGuard {
 		return
 	}
 	a.stopping = true // DELETE 最多要等 3 秒，别让界面看起来没反应

@@ -5,6 +5,7 @@ import (
 	"image"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"quick-scan/internal/platform"
 	"quick-scan/internal/scanner"
@@ -247,6 +248,8 @@ type app struct {
 	pendingDelete uint64
 	scanning      bool
 	scanCancel    context.CancelFunc // 停止扫描用；不扫时为 nil
+	scanStarted   time.Time          // 本批开始时刻：双击防护用
+	batchPages    int                // 本批已落盘的页数：停止文案按它判定
 	stopRequested bool               // 用户点了停止：收尾文案靠它，而不是 ctx.Err()
 	stopping      bool               // 停止已发出、等扫描 goroutine 收尾
 	restoring     bool               // 正在把上次崩溃遗留的页面解码回界面
