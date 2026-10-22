@@ -40,7 +40,8 @@ func DefaultExportDir() string {
 		return ""
 	}
 	defer procCoTaskMemFree.Call(uintptr(unsafe.Pointer(ptr)))
-	// Windows 的 syscall 没有 UTF16PtrToString（别的平台才有），自己数到 NUL。
+	// Windows 的 syscall 没有现成的 PWSTR→string（x/sys/windows 才有，
+	// 不想为此引依赖），自己数到 NUL。
 	return syscall.UTF16ToString(unsafe.Slice(ptr, wcslen(ptr)))
 }
 
