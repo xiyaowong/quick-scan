@@ -231,11 +231,11 @@ type app struct {
 	// hintDetail 是它的补充详情（原始错误），鼠标悬停时显示。
 	hint       string
 	hintDetail string
-	size   PaperSize
-	dpi    int    // 设备支持的清晰度（见 DeviceInfo.DPIs）
-	intent string // eSCL Intent，默认 Document
-	color  ColorMode
-	feeder bool // false=玻璃板 true=进纸口
+	size       PaperSize
+	dpi        int    // 设备支持的清晰度（见 DeviceInfo.DPIs）
+	intent     string // eSCL Intent，默认 Document
+	color      ColorMode
+	feeder     bool // false=玻璃板 true=进纸口
 
 	pages      []Page
 	nextPageID uint64
