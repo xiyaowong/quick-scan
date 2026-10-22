@@ -27,6 +27,9 @@ func (a *app) startStatusPoll() {
 	if Win == nil {
 		return // 单元测试不跑后台轮询
 	}
+	if a.statusKick != nil {
+		return // 已经起过；再起一条会多出一倍请求，也再没人能停它
+	}
 	a.statusKick = make(chan struct{}, 1)
 	go a.statusLoop()
 }
