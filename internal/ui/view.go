@@ -373,10 +373,15 @@ func (a *app) sourceField(c *ui.Context) {
 }
 
 func (a *app) scanButton(c *ui.Context) {
+	// 扫描中按钮变成「停止」：放错纸不用等整叠扫完再删。
+	if a.scanning {
+		a.stopScanButton(c)
+		return
+	}
 	off := a.devState != DevOnline
 	issue := a.scanIssue()
 	blocked := issue.Text != ""
-	busy := a.scanning || a.probing || a.restoring
+	busy := a.probing || a.restoring
 	disabled := off || busy || blocked
 	label := "扫　描"
 	switch {
@@ -384,8 +389,6 @@ func (a *app) scanButton(c *ui.Context) {
 		label = "连接设备…"
 	case a.restoring:
 		label = "恢复页面…"
-	case a.scanning:
-		label = "扫描中…"
 	}
 
 	b := ui.ButtonBase(c).FillWidth().Height(44).Radius(8).Disabled(disabled).
@@ -403,6 +406,21 @@ func (a *app) scanButton(c *ui.Context) {
 	})
 	if b.Clicked() {
 		a.startScan()
+	}
+}
+
+func (a *app) stopScanButton(c *ui.Context) {
+	b := ui.ButtonBase(c).FillWidth().Height(44).Radius(8).
+		Transition(ui.ElementTransition{Duration: 140 * time.Millisecond, Colors: true})
+	fg := paintButton(b, toneDanger, false)
+	b.Children(func() {
+		ui.Row(c).Gap(9).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, icoStop).FontSize(15).TextColor(fg)
+			ui.Text(c, "停　止").FontSize(14).FontWeight(600).TextColor(fg).LetterSpacing(1.1)
+		})
+	})
+	if b.Clicked() {
+		a.stopScan()
 	}
 }
 

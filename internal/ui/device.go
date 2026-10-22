@@ -552,8 +552,11 @@ func (a *app) startScan() {
 	a.saveCache()     // 用户真正用起来的设备，下次启动优先显示
 	a.saveScanPrefs() // 真正扫过的设置才值得记：改了没扫不算数，崩溃也不丢
 
+	ctx, cancel := context.WithCancel(context.Background())
+	a.scanCancel = cancel
+
 	go func() {
-		_, err := scanner.Scan(context.Background(), &dev, opts, scanner.ScanSink{
+		_, err := scanner.Scan(ctx, &dev, opts, scanner.ScanSink{
 			Dir: dir,
 			Progress: func(f float64) {
 				Win.Update(func() { a.scanProgress = f })
@@ -572,12 +575,26 @@ func (a *app) startScan() {
 		})
 		Win.Update(func() {
 			a.scanning = false
-			if err != nil {
+			a.scanCancel = nil
+			stopped := ctx.Err() != nil
+			switch {
+			case stopped && len(a.pages) > 0:
+				a.scanStatus = "已停止，保留已扫完的页面。"
+			case stopped:
+				a.scanStatus = "已停止。"
+			case err != nil:
 				a.scanStatus = err.Error()
 			}
 			a.requestStatusRefresh() // 扫完立刻回读，别停在扫描中的"忙"上
 		})
 	}()
+}
+
+// stopScan 只发取消信号；收尾（按钮恢复、状态文案）由扫描 goroutine 回主线程做。
+func (a *app) stopScan() {
+	if a.scanCancel != nil {
+		a.scanCancel()
+	}
 }
 
 // 解码耗时，调用方负责放到后台线程。

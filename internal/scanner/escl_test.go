@@ -375,6 +375,34 @@ func TestScanAbortedDeletesJob(t *testing.T) {
 	}
 }
 
+// 用户停止：已落盘的页照常交付、不算失败，任务照删释放设备。
+func TestScanCancelledKeepsPagesAndDeletesJob(t *testing.T) {
+	fs := newFakeScanner(t, 3)
+	d := fs.device()
+	if err := Probe(context.Background(), &d); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	var seen []string
+	files, err := Scan(ctx, &d,
+		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, ScanSink{
+			Dir: t.TempDir(),
+			OnPage: func(path string) {
+				seen = append(seen, path)
+				cancel() // 第一页到手就停
+			},
+		})
+	if err != nil {
+		t.Fatalf("用户停止不该报错：%v", err)
+	}
+	if len(seen) != 1 || len(files) != 1 {
+		t.Fatalf("停止后应保留 1 页，回调 %d / 返回 %d", len(seen), len(files))
+	}
+	if got := atomic.LoadInt32(&fs.deleted); got != 1 {
+		t.Errorf("停止后应删任务一次，实际 %d 次", got)
+	}
+}
+
 // 设备只报“扫完没有”，进度靠时间估 + 下载字节数推；这里验证它单调、有起点、收在 1。
 func TestScanReportsProgress(t *testing.T) {
 	fs := newFakeScanner(t, 3)
