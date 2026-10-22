@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 )
 
-// WriteFileAtomic 同目录写临时文件再改名：崩溃或断电时不会留下半份 JSON。
+// 同目录写临时文件再改名：崩溃或断电时不会留下半份 JSON。
 // dirPerm 只管目录：%TEMP% 下的记录用 0700，会话目录要能被资源管理器打开，用 0755。
 func WriteFileAtomic(path string, data []byte, dirPerm os.FileMode) error {
 	dir := filepath.Dir(path)

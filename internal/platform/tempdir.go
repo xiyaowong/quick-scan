@@ -17,12 +17,9 @@ const (
 // 进程私有的临时目录：目前只放解包出来的 OCR 模型。
 var tempRoot = filepath.Join(os.TempDir(), tempPrefix+strconv.Itoa(os.Getpid()))
 
-// 会话目录固定在 %TEMP% 下，不跟进程号走。
-// 正常退出由 Cleanup 删除；崩溃时走不到删除这一步，目录留着，下次启动据此恢复。
+// 不跟进程号走：正常退出由 Cleanup 删除，崩溃时目录留着，下次启动据此恢复。
 func SessionDir() string { return sessionDir() }
 
-// CacheDir 放跨启动还想知道的小记录（设备名单、上次导出的文件夹）。
-// 不走注册表、也不建配置目录：被临时文件清理掉只是回到默认状态。
 func CacheDir() string {
 	return filepath.Join(os.TempDir(), "quick-scan")
 }

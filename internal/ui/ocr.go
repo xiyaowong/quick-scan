@@ -3,7 +3,6 @@ package ui
 
 import "quick-scan/internal/scanner"
 
-// startOCRSuggest 首页扫完后自动跑 OCR 文件名候选（后台，失败静默）。
 func (a *app) startOCRSuggest() {
 	if a.ocrRunning || len(a.pages) == 0 {
 		return
@@ -22,7 +21,7 @@ func (a *app) startOCRSuggest() {
 	}()
 }
 
-// applyOCRName 应用 OCR 候选到文件名输入框：第一次替换，后续追加。
+// 第一次替换，后续追加。
 func (a *app) applyOCRName(name string) {
 	if a.ocrPicked && a.exportFilename != "" {
 		a.exportFilename += name

@@ -199,7 +199,7 @@ func TestBrowserDevices(t *testing.T) {
 	rec.txt["rs"] = "eSCL"
 	b.addrs["hp30138b5ddfa6.local."] = "192.168.3.111"
 
-	devs := b.devices()
+	devs := b.devices(context.Background())
 	if len(devs) != 1 {
 		t.Fatalf("devices = %+v", devs)
 	}

@@ -32,8 +32,7 @@ func PagePath(file string) string {
 	return filepath.Join(SessionDir(), filepath.Base(file))
 }
 
-// SaveSession 只记页序和旋转；图片本身已经落在目录里。
-// 空清单直接把记录删掉：页都删光了就没什么可恢复的。
+// 只记页序和旋转；图片本身已经落在目录里。
 func SaveSession(pages []SessionPage) {
 	path := filepath.Join(SessionDir(), sessionFileName)
 	if len(pages) == 0 {
@@ -47,9 +46,8 @@ func SaveSession(pages []SessionPage) {
 	_ = WriteFileAtomic(path, data, 0o755)
 }
 
-// LoadSession 有残留页面就返回清单。
-// 清单只记顺序和旋转；扫描中途崩溃时最后几页可能还没来得及登记，
-// 所以把目录里没被清单引用的图片按文件名补在后面，一页都不丢。
+// 有残留页面就返回清单。扫描中途崩溃时最后几页可能还没来得及登记，
+// 所以把目录里没被清单引用的图片补在后面。
 func LoadSession() ([]SessionPage, bool) {
 	dir := SessionDir()
 	files := pageFiles(dir)

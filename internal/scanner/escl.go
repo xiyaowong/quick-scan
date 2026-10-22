@@ -114,7 +114,6 @@ type axisRangeXML struct {
 	Step int `xml:"Step"`
 }
 
-// parseCapabilities 解析能力 XML；解析失败不算离线，只是选项全开。
 func parseCapabilities(data []byte) (*scannerCapabilities, error) {
 	var raw capsXML
 	if err := xml.Unmarshal(data, &raw); err != nil {
@@ -145,7 +144,7 @@ func parseCapabilities(data []byte) (*scannerCapabilities, error) {
 	return c, nil
 }
 
-// sanitizeVersion 只留数字和点：版本会原样进 XML 请求体，别让设备上的怪字符带进去。
+// 版本会原样进 XML 请求体，别让设备上的怪字符带进去。
 func sanitizeVersion(v string) string {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -278,7 +277,7 @@ var paperUnits = map[string][2]int{
 	PaperLetter: {2550, 3300},
 }
 
-// paperUnit 未知尺寸按 A4 算：键来自界面，万一传岔了也不能下发 0×0 的扫描区域。
+// 未知尺寸按 A4 算：键来自界面，万一传岔了也不能下发 0×0 的扫描区域。
 func paperUnit(size string) [2]int {
 	if u, ok := paperUnits[size]; ok {
 		return u
@@ -394,7 +393,7 @@ func Probe(ctx context.Context, d *DeviceInfo) error {
 	return nil
 }
 
-// applyCaps 把能力摊进 DeviceInfo：界面只读 d 上的字段，不碰 caps。
+// 界面只读 d 上的字段，不碰 caps。
 func applyCaps(d *DeviceInfo, caps *scannerCapabilities) {
 	d.caps = caps
 	d.Online = true
@@ -408,7 +407,6 @@ func applyCaps(d *DeviceInfo, caps *scannerCapabilities) {
 	d.Feeder = caps.ADF != nil
 }
 
-// supportedColors 按界面顺序（彩色 → 灰度 → 黑白）列出设备支持项。
 // 返回空切片而不是 nil：这些值会原样进缓存 JSON，nil 会写成 null。
 func supportedColors(caps *scannerCapabilities) []string {
 	out := []string{}
@@ -438,18 +436,14 @@ type Options struct {
 	Intent string // eSCL Intent；空 = Document
 }
 
-// ScanSink 是扫描过程的输出口：进度、每落盘一页、以及落到哪个目录。
 type ScanSink struct {
 	Dir string
-	// Progress 拿到 0..1 的估算进度：设备只报"扫完没有"，不报扫到第几行，
-	// 细处靠时间和下载字节数推。
+	// 0..1 的估算进度。
 	Progress func(float64)
-	// OnPage 在扫描 goroutine 里每落盘一页调一次：界面不用等整批扫完才拿到页面，
-	// 扫描中途崩溃也不会丢掉已经下完的页。
+	// OnPage 在扫描 goroutine 里每落盘一页调一次：扫描中途崩溃也不会丢掉已经下完的页。
 	OnPage func(path string)
 }
 
-// 失败时 DELETE 掉任务。
 func Scan(ctx context.Context, d *DeviceInfo, opts Options, sink ScanSink) ([]string, error) {
 	report := func(f float64) {
 		if sink.Progress != nil {
@@ -545,7 +539,7 @@ func pageExt(format string) string {
 	return ".jpg"
 }
 
-// pageEstimate 粗估一页要扫多久：像素数 ÷ 经验吞吐，彩色最慢。
+// 像素数 ÷ 经验吞吐，彩色最慢。
 func pageEstimate(opts Options) time.Duration {
 	u := paperUnit(opts.Size)
 	scale := float64(opts.DPI) / 300
@@ -561,7 +555,7 @@ func pageEstimate(opts Options) time.Duration {
 	return max(time.Second, time.Duration(px/rate*float64(time.Second)))
 }
 
-// scanEstimate 按时间估设备扫到了哪：前段爬得快，越往后越慢，留 10% 给下载。
+// 前段爬得快，越往后越慢，留 10% 给下载。
 func scanEstimate(elapsed, expect time.Duration) float64 {
 	if expect <= 0 {
 		expect = 6 * time.Second
@@ -589,7 +583,7 @@ func (d *DeviceInfo) resourceURL(name string) string {
 	return "http://" + net.JoinHostPort(d.IP, strconv.Itoa(port)) + "/" + path + "/" + name
 }
 
-// pickColorMode 优先用设备原样上报的 ColorMode（比如 RGB48），没有就按规范给默认值。
+// 优先用设备原样上报的 ColorMode（比如 RGB48），没有才按规范给默认值。
 func pickColorMode(in *inputCaps, key string) string {
 	if in != nil {
 		for _, m := range in.RawModes {
@@ -601,7 +595,7 @@ func pickColorMode(in *inputCaps, key string) string {
 	return esclColorName(key)
 }
 
-// pickIntent 把界面选的 Intent 落到设备支持的值上：精确匹配 → Document → 设备第一项。
+// 精确匹配 → Document → 设备第一项。
 func pickIntent(in *inputCaps, want string) string {
 	if want == "" {
 		want = IntentDocument
@@ -633,8 +627,7 @@ func esclColorName(key string) string {
 	}
 }
 
-// scanSettings 是 buildScanSettings 的输入。参数一多就分不清哪个是版本、哪个是格式，
-// 打包成一个结构体，调用处按字段名读得出来。
+// 调用处按字段名读，不会把版本当格式。
 type scanSettings struct {
 	Version   string
 	Format    string
@@ -644,7 +637,7 @@ type scanSettings struct {
 	Caps      *inputCaps // 用来夹边界；nil = 不限制
 }
 
-// buildScanSettings 生成 ScanSettings XML：尺寸按物理尺寸 × dpi，超限则夹到边界。
+// 尺寸按物理尺寸 × dpi，超限则夹到边界。
 func buildScanSettings(s scanSettings) []byte {
 	u := paperUnit(s.Opts.Size)
 	scale := float64(s.Opts.DPI) / 300.0
@@ -680,7 +673,7 @@ func buildScanSettings(s scanSettings) []byte {
 	return []byte(xml)
 }
 
-// clampToCaps 把 300dpi 基准的纸面尺寸换算到目标 dpi，再夹进设备报的最大区域。
+// 把 300dpi 基准的纸面尺寸换算到目标 dpi，再夹进设备报的最大区域。
 func clampToCaps(in *inputCaps, unit [2]int, scale float64) (w, h int) {
 	w = int(float64(unit[0])*scale + 0.5)
 	h = int(float64(unit[1])*scale + 0.5)
@@ -696,7 +689,7 @@ func clampToCaps(in *inputCaps, unit [2]int, scale float64) (w, h int) {
 	return w, h
 }
 
-// createScanJob POST 建任务，返回任务 URL（Location 头）。
+// 任务 URL 在 Location 头里。
 func createScanJob(ctx context.Context, d *DeviceInfo, settings []byte) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, jobTimeout)
 	defer cancel()
@@ -735,13 +728,12 @@ func resolveURL(base, ref string) string {
 	return b.ResolveReference(r).String()
 }
 
-// nextDocument 取下一张；刚建任务时的 503 按退避重试。
+// 刚建任务时设备常回 503，退避重试放在 waitForDocument 里。
 func nextDocument(ctx context.Context, jobURL string, expect time.Duration, progress func(float64)) ([]byte, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, pageTimeout)
 	defer cancel()
 	start := time.Now()
 
-	// Do 会一直阻塞到设备扫完，中间没有事件可听：另起一个 ticker 按时间报估算值。
 	stop := estimateTicker(progress, func() float64 {
 		return scanEstimate(time.Since(start), expect)
 	})
@@ -756,8 +748,6 @@ func nextDocument(ctx context.Context, jobURL string, expect time.Duration, prog
 	}
 	// 必须在下载前收掉 ticker：一个迟到的估算值会让进度往回跳。
 	stop()
-	// 扫描阶段爬到哪，剩下的就按下载字节数收尾；这里从此刻起算，
-	// 所以不会小于 ticker 刚报过的值。
 	scan := scanEstimate(time.Since(start), expect)
 	data, err := readDocument(resp, func(f float64) {
 		if progress != nil {
@@ -770,9 +760,12 @@ func nextDocument(ctx context.Context, jobURL string, expect time.Duration, prog
 	return data, resp.Header.Get("Content-Type"), nil
 }
 
-// waitForDocument 轮询到设备准备出一页。返回 nil, nil 表示设备说没有下一张了。
+// 返回 nil, nil 表示设备说没有下一张了。
 func waitForDocument(ctx context.Context, pageURL string) (*http.Response, error) {
 	delay := 250 * time.Millisecond
+	// 复用同一个 timer：退避循环会转很多轮。
+	wait := time.NewTimer(delay)
+	defer wait.Stop()
 	for {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
 		if err != nil {
@@ -793,17 +786,17 @@ func waitForDocument(ctx context.Context, pageURL string) (*http.Response, error
 				return nil, fmt.Errorf("取扫描页失败（HTTP %d）", resp.StatusCode)
 			}
 		}
+		wait.Reset(delay)
 		select {
 		case <-ctx.Done():
 			return nil, errors.New("等待扫描结果超时")
-		case <-time.After(delay):
+		case <-wait.C:
 		}
 		delay = min(2*delay, 2*time.Second)
 	}
 }
 
-// estimateTicker 每 100ms 报一次估算进度，返回的 stop 会等协程真正退出。
-// progress 为 nil 时 stop 是空操作：不报进度就不该起协程。
+// stop 返回后不会再回调，下载阶段好接着推进度。
 func estimateTicker(progress func(float64), est func() float64) (stop func()) {
 	if progress == nil {
 		return func() {}
@@ -831,8 +824,7 @@ func estimateTicker(progress func(float64), est func() float64) (stop func()) {
 	return stop
 }
 
-// readDocument 读取一页的响应体；有 Content-Length 时才谈得上按字节数报进度。
-// 每 100ms 最多报一次，别让一次下载推几百次界面重绘。
+// 进度最多每 100ms 报一次，别让一次下载推几百次界面重绘。
 func readDocument(resp *http.Response, progress func(float64)) ([]byte, error) {
 	defer resp.Body.Close()
 	if progress == nil || resp.ContentLength <= 0 {
@@ -861,7 +853,7 @@ func readDocument(resp *http.Response, progress func(float64)) ([]byte, error) {
 	}
 }
 
-// cancelScanJob 任务收尾：DELETE 掉，释放扫描仪（失败无声——设备可能已经自己清了）。
+// 收尾 DELETE 掉，释放扫描仪；失败无声——设备可能已经自己清了。
 func cancelScanJob(jobURL string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

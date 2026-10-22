@@ -18,11 +18,12 @@ import (
 )
 
 const (
-	esclFQDN     = "_uscan._tcp.local."
-	discoverWait = 4 * time.Second // 硬上限；正常网络 1 秒内就能收齐
-	phase1Wait   = 1500 * time.Millisecond
-	phase2Wait   = 1200 * time.Millisecond
-	defaultPort  = 80
+	esclFQDN      = "_uscan._tcp.local."
+	discoverWait  = 4 * time.Second // 硬上限；正常网络 1 秒内就能收齐
+	phase1Wait    = 1500 * time.Millisecond
+	phase2Wait    = 1200 * time.Millisecond
+	lookupTimeout = 2 * time.Second
+	defaultPort   = 80
 )
 
 var mdnsGroup = &net.UDPAddr{IP: net.IPv4(224, 0, 0, 251), Port: 5353}
@@ -55,7 +56,6 @@ type mdnsQuery struct {
 	msg []byte
 }
 
-// newBrowser 准备好一个空的浏览状态；map 全部初始化，收包时不必再判空。
 func newBrowser() *mdnsBrowser {
 	return &mdnsBrowser{
 		records:    map[string]*serviceRecord{},
@@ -70,7 +70,6 @@ func newBrowser() *mdnsBrowser {
 // 每次超时重试留一点余量，别让 readLoop 在应答刚到时空转一圈。
 const unicastReadDeadline = 250 * time.Millisecond
 
-// ctx 超时即停止，返回已找到的。
 func Discover(ctx context.Context) ([]DeviceInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, discoverWait)
 	defer cancel()
@@ -103,7 +102,6 @@ func Discover(ctx context.Context) ([]DeviceInfo, error) {
 	// ── phase 1：组播 PTR ──
 	ptrQuery := queryPacket(esclFQDN, dns.TypePTR, false)
 	mc.send(ptrQuery)
-	// 组播可能丢包：600ms 后再问一次
 	b.collect(ctx, phase1Wait, 600*time.Millisecond, func() {
 		mc.send(ptrQuery)
 	})
@@ -125,10 +123,10 @@ func Discover(ctx context.Context) ([]DeviceInfo, error) {
 		b.collect(ctx, phase2Wait, 0, nil)
 	}
 
-	return b.devices(), nil
+	return b.devices(ctx), nil
 }
 
-// multicastSocket 绑定 5353 并从默认路由网卡收发；多网卡全加入反而容易选错出口。
+// 多网卡全加入反而容易选错出口。
 type multicastSocket struct {
 	conn *net.UDPConn
 }
@@ -159,13 +157,11 @@ func (s *multicastSocket) read(buf []byte) (int, net.IP, error) {
 
 func (s *multicastSocket) Close() { s.conn.Close() }
 
-// defaultIPv4Iface 是默认出口网卡：组播和网段扫描都用它。
 func defaultIPv4Iface() (*net.Interface, error) {
 	_, ifi, err := defaultIPv4Addr()
 	return ifi, err
 }
 
-// defaultIPv4Addr 用 UDP Dial 让系统选路（不发包），拿默认出口的源地址和网卡。
 func defaultIPv4Addr() (net.IP, *net.Interface, error) {
 	conn, err := net.DialUDP("udp4", nil, &net.UDPAddr{IP: net.IPv4(8, 8, 8, 8), Port: 53})
 	if err == nil {
@@ -221,7 +217,6 @@ func ifaceIPv4(ifi *net.Interface) net.IP {
 	return nil
 }
 
-// ifaceIPv4Net 找网卡上与 ip 同一地址的子网（含掩码），网段扫描要用。
 func ifaceIPv4Net(ifi *net.Interface, ip net.IP) *net.IPNet {
 	want := ip.To4()
 	if ifi == nil || want == nil {
@@ -239,7 +234,7 @@ func ifaceIPv4Net(ifi *net.Interface, ip net.IP) *net.IPNet {
 	return nil
 }
 
-// queryPacket 构造查询。qu=true 置 QU 位请求单播应答；PTR 必须用普通组播，否则 HP 会忽略。
+// qu=true 置 QU 位请求单播应答；PTR 必须用普通组播，否则 HP 会忽略。
 func queryPacket(name string, qtype uint16, qu bool) []byte {
 	m := new(dns.Msg)
 	m.SetQuestion(name, qtype)
@@ -308,7 +303,6 @@ func (b *mdnsBrowser) close() {
 	b.closeOnce.Do(func() { close(b.done) })
 }
 
-// handle 归并一条应答里的 PTR/SRV/TXT/A 记录。
 func (b *mdnsBrowser) handle(p mdnsPacket) {
 	rrs := append(append(append([]dns.RR{}, p.msg.Answer...), p.msg.Ns...), p.msg.Extra...)
 	for _, rr := range rrs {
@@ -350,8 +344,7 @@ func (b *mdnsBrowser) record(instance string) *serviceRecord {
 	return r
 }
 
-// devices 把解析好的记录组装成设备列表（去重、排序、编下标）。
-func (b *mdnsBrowser) devices() []DeviceInfo {
+func (b *mdnsBrowser) devices(ctx context.Context) []DeviceInfo {
 	var found []DeviceInfo
 	seen := map[string]bool{}
 	for _, rec := range b.records {
@@ -360,7 +353,7 @@ func (b *mdnsBrowser) devices() []DeviceInfo {
 		}
 		ip := b.addrs[strings.ToLower(rec.host)]
 		if ip == "" {
-			ip = lookupIPv4(rec.host)
+			ip = lookupIPv4(ctx, rec.host)
 		}
 		if ip == "" {
 			continue // 只有 IPv6 / 解析不到：不采用
@@ -399,21 +392,23 @@ func (b *mdnsBrowser) devices() []DeviceInfo {
 	return found
 }
 
-// lookupIPv4 兜底：SRV 没带 A 记录时，用系统解析器找 IPv4。
-func lookupIPv4(host string) string {
-	addrs, err := net.LookupIP(strings.TrimSuffix(host, "."))
+// lookupIPv4 兜底：SRV 没带 A 记录时问系统解析器。
+// 必须带截止时间：.local 名字在某些网络里会让解析器挂很久，而这时设备已经找齐了。
+func lookupIPv4(ctx context.Context, host string) string {
+	ctx, cancel := context.WithTimeout(ctx, lookupTimeout)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, strings.TrimSuffix(host, "."))
 	if err != nil {
 		return ""
 	}
 	for _, a := range addrs {
-		if v4 := a.To4(); v4 != nil {
+		if v4 := a.IP.To4(); v4 != nil {
 			return v4.String()
 		}
 	}
 	return ""
 }
 
-// shortInstanceName 去掉 "._uscan._tcp.local." 后缀并还原 DNS 转义（\ 空格、\( \)）。
 func shortInstanceName(instance string) string {
 	s := strings.TrimSuffix(instance, ".")
 	s = strings.TrimSuffix(s, "._uscan._tcp.local")
@@ -438,7 +433,6 @@ func unescapeDNSName(s string) string {
 	return b.String()
 }
 
-// parseTXT 把 "key=value" 形式的 TXT 记录摊成小写键的映射；没有等号或键为空的行直接跳过。
 func parseTXT(text []string) map[string]string {
 	out := make(map[string]string, len(text))
 	for _, kv := range text {

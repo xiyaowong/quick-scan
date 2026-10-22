@@ -12,7 +12,7 @@ import (
 	"golang.org/x/image/draw"
 )
 
-// Decode 按文件头解码 BMP / JPEG / PNG；BMP 分支留给 OCR 测试和旧样张。
+// BMP 分支留给 OCR 测试和旧样张。
 func Decode(path string) (*image.RGBA, error) {
 	f, err := os.Open(path)
 	if err != nil {

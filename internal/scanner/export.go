@@ -22,8 +22,7 @@ type ExportPage struct {
 
 type ProgressFunc func(done, total int)
 
-// ExportOptions 一次导出的全部输入。逐页导出和合成 PDF 只差 AsPDF，
-// 其余字段摆在一起才看得出「同一批页面、同一个落点」。
+// 逐页导出和合成 PDF 只差 AsPDF，其余字段摆在一起才看得出「同一批页面、同一个落点」。
 type ExportOptions struct {
 	Pages []ExportPage
 	Dir   string // 目标目录
@@ -55,7 +54,7 @@ func ExportPages(o ExportOptions) (*ExportOutcome, error) {
 	return jpgOutcome(o.Dir, written), nil
 }
 
-// jpgOutcome 描述多文件导出的落点：文件夹里可能只多了一张，界面上要说得清。
+// 文件夹里可能只多了一张，界面上要说得清。
 func jpgOutcome(dir string, written []string) *ExportOutcome {
 	n := len(written)
 	var display string

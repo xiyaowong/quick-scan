@@ -1,5 +1,4 @@
 // 设备检测与扫描编排：发现走 mDNS，探测和扫描走 eSCL。
-// 只有用户选定或要扫描时才连接设备，未选中的只留在名单里。
 package ui
 
 import (
@@ -12,7 +11,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// startup 先用缓存显示上次的设备并验证，同时后台跑 mDNS 发现。
 func (a *app) startup() {
 	if devs, selected := scanner.LoadCache(); len(devs) > 0 {
 		a.applyCached(devs, selected)
@@ -22,10 +20,10 @@ func (a *app) startup() {
 	a.startStatusPoll()
 }
 
-// netScanHint 网段扫描时的状态栏提示：mDNS 没结果时让用户知道还在找。
+// netScanHint 让用户知道还在找，否则界面看起来像卡住了。
 const netScanHint = "正在扫描局域网 …"
 
-// startDetect 后台浏览局域网设备。只发现、不探测能力；有缓存名单时静默刷新。
+// 只发现、不探测能力。
 // mDNS 没应答且没有能用的设备时，才兜底扫网段——扫描是为了找，不该每次启动都跑。
 func (a *app) startDetect() {
 	if a.detecting || a.netScanning {
@@ -41,7 +39,6 @@ func (a *app) startDetect() {
 		Win.Update(func() {
 			a.detecting = false
 			a.applyDiscovery(devs, mdnsErr)
-			// mDNS 找到了，或缓存里的设备已经连上：够用了，不必扫网段。
 			if len(devs) == 0 && !a.anyDeviceOnline() {
 				a.startSubnetScan(mdnsErr)
 			}
@@ -49,8 +46,7 @@ func (a *app) startDetect() {
 	}()
 }
 
-// applyDiscovery 把一轮 mDNS 结果并进设备列表。有名单时的合并逻辑和首轮建表不同，
-// 所以分两条路；mDNS 报错时先把提示留着，网段扫描还能兜底。
+// mDNS 报错时先把提示留着，网段扫描还能兜底。
 func (a *app) applyDiscovery(found []scanner.DeviceInfo, mdnsErr error) {
 	if mdnsErr != nil {
 		if len(a.devices) == 0 {
@@ -69,7 +65,7 @@ func (a *app) applyDiscovery(found []scanner.DeviceInfo, mdnsErr error) {
 	}
 }
 
-// anyDeviceOnline 有能用的设备就不扫网段，否则每次启动都会白扫一遍 254 个地址。
+// 有能用的设备就不扫，否则每次启动都会白扫一遍 254 个地址。
 func (a *app) anyDeviceOnline() bool {
 	for i := range a.devices {
 		if a.devices[i].Online {
@@ -79,7 +75,6 @@ func (a *app) anyDeviceOnline() bool {
 	return false
 }
 
-// startSubnetScan mDNS 没结果时兜底：每找到一台立刻可用，其余地址后台继续扫。
 func (a *app) startSubnetScan(mdnsErr error) {
 	if a.netScanning {
 		return
@@ -110,8 +105,7 @@ func (a *app) startSubnetScan(mdnsErr error) {
 	}()
 }
 
-// addDiscovered 网段扫描每找到一台就调一次：只负责加进名单，
-// 选中、排序、探测仍走原有的设备逻辑。
+// 只负责加进名单；探测由 probeCached / probeFirstOnline 触发。
 func (a *app) addDiscovered(d scanner.DeviceInfo) {
 	key := scanner.DeviceKey(d)
 	if key == "" {
@@ -137,7 +131,6 @@ func (a *app) addDiscovered(d scanner.DeviceInfo) {
 	}
 }
 
-// recheckAll 用户点 ⟳：重新验证已知设备，同时再跑一轮 mDNS。
 func (a *app) recheckAll() {
 	a.userPicked = false
 	a.autoQueue = nil
@@ -151,7 +144,6 @@ func (a *app) recheckAll() {
 	a.probeFirstUnprobed()
 }
 
-// resetDevices 用一份新名单整体替换设备状态：身份重编、探测记录清空，
 // 在途的探测按代际号作废——旧结果回来时自己丢弃，不用谁去追。
 func (a *app) resetDevices(devs []scanner.DeviceInfo) {
 	a.devGen++
@@ -173,7 +165,6 @@ func (a *app) resetDevices(devs []scanner.DeviceInfo) {
 	a.hint = ""
 }
 
-// applyCached 把缓存名单放进状态，先全部当"未探测"；能力字段照常可用。
 func (a *app) applyCached(devs []scanner.DeviceInfo, selected string) {
 	a.resetDevices(devs)
 	if selected != "" {
@@ -184,7 +175,7 @@ func (a *app) applyCached(devs []scanner.DeviceInfo, selected string) {
 	a.refreshState()
 }
 
-// probeCached 先验证上次选中的设备，失败就按名单顺序继续，直到找到在线的。
+// 先验证上次选中的设备，失败就按名单顺序继续，直到找到在线的。
 func (a *app) probeCached() {
 	if len(a.devices) == 0 {
 		return
@@ -198,8 +189,7 @@ func (a *app) probeCached() {
 	a.requestProbe(a.devices[a.devSel].Idx, true)
 }
 
-// mergeDetected 合并 mDNS 结果：同端点保留 Idx 和能力，新设备排后面，
-// 既没发现也没连上的缓存条目删掉。
+// 同端点保留 Idx 和能力；既没发现也没连上的缓存条目删掉。
 func (a *app) mergeDetected(found []scanner.DeviceInfo) {
 	// mDNS 一个都没回可能是组播被防火墙挡了，不等于设备不存在，保留缓存名单。
 	if len(found) == 0 {
@@ -267,7 +257,6 @@ func (a *app) mergeDetected(found []scanner.DeviceInfo) {
 	}
 }
 
-// probeFirstUnprobed 找一台尚未探测的设备去验证。返回是否真的发起了探测。
 func (a *app) probeFirstUnprobed() bool {
 	if a.probing || a.userPicked {
 		return false
@@ -283,7 +272,6 @@ func (a *app) probeFirstUnprobed() bool {
 
 // 同一时刻只允许一个探测在飞。身份一律用 DeviceInfo.Idx：
 // 列表会按在线状态重排，而设备可能重名。
-
 func (a *app) probeSelected() {
 	a.autoQueue = nil
 	a.userPicked = true
@@ -303,7 +291,6 @@ func (a *app) probeSelected() {
 	a.requestProbe(a.devices[a.devSel].Idx, false)
 }
 
-// probeFirstOnline 按名单顺序找第一台在线的；全失败则停在最后一台。
 func (a *app) probeFirstOnline() {
 	if len(a.devices) == 0 {
 		return
@@ -315,7 +302,7 @@ func (a *app) probeFirstOnline() {
 	a.requestProbe(a.devices[0].Idx, true)
 }
 
-// requestProbe 启动一次探测（忙则排队）。auto=true 表示接力，用户手动选择后作废。
+// auto=true 表示接力，用户手动选择后作废。
 func (a *app) requestProbe(idx int, auto bool) {
 	if Win == nil { // 单元测试/无窗口环境：不发起真实网络探测
 		return
@@ -388,7 +375,7 @@ func (a *app) requestProbe(idx int, auto bool) {
 	}()
 }
 
-// advanceProbe 上一次探测收尾后决定下一步：用户中途选的优先，否则接力下一台。
+// 用户中途选的优先，否则接力下一台。
 func (a *app) advanceProbe(failed bool) {
 	if a.pendingProbe {
 		a.pendingProbe = false
@@ -410,7 +397,6 @@ func (a *app) advanceProbe(failed bool) {
 	a.autoQueue = nil
 }
 
-// listIndex 设备下标 → 当前列表位置（-1 = 列表里没有）
 func (a *app) listIndex(idx int) int {
 	for i := range a.devices {
 		if a.devices[i].Idx == idx {
@@ -420,7 +406,7 @@ func (a *app) listIndex(idx int) int {
 	return -1
 }
 
-// sortDevices 在线的排前、未探测的居中、失败的垫底；devSel 跟着设备走。
+// 在线的排前、未探测的居中、失败的垫底；devSel 跟着设备走。
 func (a *app) sortDevices() {
 	if len(a.devices) < 2 {
 		return
@@ -456,13 +442,12 @@ func (a *app) sortDevices() {
 	a.refreshState()
 }
 
-// applyDetect 探测结果落进状态：只有名单没有能力，代际号 +1 作废旧探测。
 func (a *app) applyDetect(devs []scanner.DeviceInfo) {
 	a.resetDevices(devs)
 	a.refreshState()
 }
 
-// applyDefaults 按设备能力重置默认参数；li 是列表位置，不是发现下标。
+// li 是列表位置，不是发现下标。
 func (a *app) applyDefaults(li int) {
 	if li < 0 || li >= len(a.devices) {
 		return
@@ -488,7 +473,6 @@ func (a *app) applyDefaults(li int) {
 	a.feeder = false
 }
 
-// startScan 开始一次扫描（后台跑 eSCL）。
 func (a *app) startScan() {
 	if a.scanning || a.restoring || a.devState != DevOnline {
 		return
@@ -522,7 +506,7 @@ func (a *app) startScan() {
 			Progress: func(f float64) {
 				Win.Update(func() { a.scanProgress = f })
 			},
-			// 每下完一页就解码缩略图并登记，整批扫完前崩溃也不丢已扫的页。
+			// 每下完一页就登记：整批扫完前崩溃也不丢已扫的页。
 			OnPage: func(path string) {
 				p, perr := makePage(path, 0)
 				Win.Update(func() {
@@ -544,7 +528,7 @@ func (a *app) startScan() {
 	}()
 }
 
-// makePage 解码原图并生成缩略图。耗时，调用方负责放到后台线程。
+// 解码耗时，调用方负责放到后台线程。
 func makePage(path string, rot int) (Page, error) {
 	full, err := scanner.Decode(path)
 	if err != nil {
@@ -563,7 +547,7 @@ func makePage(path string, rot int) (Page, error) {
 	return p, nil
 }
 
-// appendPage 只能在主线程调：登记一页就立刻写会话清单，崩溃后能恢复到这里。
+// 只能在主线程调：登记一页就立刻写会话清单，崩溃后能恢复到这里。
 func (a *app) appendPage(p Page) {
 	p.ID = a.nextPageID
 	a.nextPageID++
@@ -576,7 +560,6 @@ func (a *app) appendPage(p Page) {
 	a.saveSession()
 }
 
-// restoreSession 把上次崩溃遗留的页面逐页解码回界面。
 // 解码放后台，页面按清单顺序一页页出现，不在 UI 线程批量卡住。
 func (a *app) restoreSession() {
 	pages := a.recoverPages

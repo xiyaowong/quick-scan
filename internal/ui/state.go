@@ -11,8 +11,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// 零值就是默认项（彩色、A4）：新装、换设备时兜底用的正是这两个，
-// 所以不设 Unknown，也就不用为了「没选过」再判一次。
+// 零值是彩色：换设备时兜底用的就是它，所以不设 Unknown，省掉一次判断。
 type ColorMode int
 
 const (
@@ -21,7 +20,8 @@ const (
 	ColorBW                     // 黑白
 )
 
-func (c ColorMode) key() string { // 能力里的色彩键（与驱动无关的界面语义）
+// key 是能力里的色彩键（与驱动无关的界面语义）
+func (c ColorMode) key() string {
 	switch c {
 	case ColorGray:
 		return "gray"
@@ -51,7 +51,7 @@ func (s PaperSize) key() string {
 	}
 }
 
-// DevState 设备状态：没探测过是 Unknown，不冒充在线。
+// 没探测过是 Unknown，不冒充在线。
 type DevState int
 
 const (
@@ -71,14 +71,12 @@ type Page struct {
 	ID       uint64     // 全局递增 id（拖拽排序的稳定键）
 	Thumb    *ui.Bitmap // 低清缩略图（240px 级）
 	ThumbRot *ui.Bitmap // 旋转后的展示位图（Rotate 时重烘；nil = 未旋转）
-	// ThumbSrc 是 240px 缩略图的像素，旋转时直接转它。转 240px 只要几十微秒，
-	// 而为了转缩略图去解码 300dpi 原图要几百毫秒。
+	// 旋转时直接转它：为了转缩略图去解码 300dpi 原图要几百毫秒。
 	ThumbSrc *image.RGBA
 	Rot      int    // 0/90/180/270：只是渲染参数，导出/OCR 时才烘进像素
 	FullPath string // 高清原图（%TEMP% 会话目录下，灯箱/导出时才读）
 }
 
-// 旋转缓存尚未生成时退回原缩略图。
 func (p *Page) thumb() *ui.Bitmap {
 	if p.Rot%360 == 0 {
 		return p.Thumb
@@ -151,8 +149,7 @@ func (lb *Lightbox) zoomBy(f float32) {
 	lb.clampPan()
 }
 
-// 图框的上下留白与左右留白，与 lightboxOverlay 里的 Padding 一致：
-// 算显示尺寸要用内容区，而不是整块图框。
+// 必须与 lightboxOverlay 里的 Padding 一致：显示尺寸算的是内容区，不是整块图框。
 const (
 	lbPadTop  float32 = 8
 	lbPadSide float32 = 44
@@ -168,7 +165,6 @@ func (lb *Lightbox) contentBox() ui.Rect {
 	}
 }
 
-// displaySize 是图片（含旋转）在图框里占的宽高。
 func (lb *Lightbox) displaySize() (w, h float32) {
 	box := lb.contentBox()
 	iw, ih := lb.ImgW, lb.ImgH
@@ -182,7 +178,7 @@ func (lb *Lightbox) displaySize() (w, h float32) {
 	return iw * s, ih * s
 }
 
-// contentRect 是图片真正画出来的地方；点黑边应该关灯箱。
+// 图片真正画出来的地方；点黑边应该关灯箱。
 func (lb *Lightbox) contentRect() ui.Rect {
 	box := lb.img
 	if box.W <= 0 || box.H <= 0 {
@@ -223,8 +219,7 @@ type app struct {
 	devStatus    scanner.Status
 	devStatusIdx int
 	statusKick   chan struct{} // nil = 没起轮询
-	// autoQueue 非空 = 正在按名单顺序找第一台在线的；存 Idx，列表重排后仍稳定。
-	autoQueue []int
+	autoQueue    []int         // 非空 = 正在按名单顺序找第一台在线的；存 Idx，列表重排后仍稳定
 	// userPicked 用户手动选过设备：接力让位，不再自动改选中项。重新检测时清零。
 	userPicked   bool
 	pendingProbe bool         // 探测期间又切了设备：上一个回来后补探
@@ -233,8 +228,7 @@ type app struct {
 	netScanning  bool // 正在扫网段兜底
 	devGrid      ui.GridState
 	// hint 是状态栏右侧唯一的一行提示：检测进度、正在连哪台、失败原因。
-	hint string
-
+	hint   string
 	size   PaperSize
 	dpi    int    // 设备支持的清晰度（见 DeviceInfo.DPIs）
 	intent string // eSCL Intent，默认 Document
@@ -347,7 +341,6 @@ func (a *app) refreshState() {
 	}
 }
 
-// movePages 把 rows 指向的页整体挪到 to 位置上。
 func (a *app) movePages(rows []int, to int) {
 	if len(rows) == 0 {
 		return
@@ -366,8 +359,8 @@ func (a *app) movePages(rows []int, to int) {
 		}
 	}
 
-	// 先按页数预分配：拖拽排序每帧都可能走一次，反复扩容会留下一串中间切片。
-	// rows 来自界面，与其信它不越界，不如把容量夹一下——负容量会直接 panic。
+	// 拖拽排序每帧都可能走一次，先按页数预分配，别反复扩容。
+	// rows 来自界面，容量要夹一下——负容量会直接 panic。
 	rest := make([]Page, 0, max(0, len(a.pages)-len(rows)))
 	dragged := make([]Page, 0, len(rows))
 	for i, p := range a.pages {
@@ -407,7 +400,7 @@ func (a *app) clearSelection() { clear(a.selected) }
 // pageCount 含尚未决定是否恢复的页面：关窗确认不能把这份数据漏掉。
 func (a *app) pageCount() int { return len(a.pages) + len(a.recoverPages) }
 
-// saveSession 记录页序和旋转。图片本身已经落在会话目录，崩溃后据此还原。
+// saveSession 记录页序和旋转；图片本身已经落在会话目录。
 func (a *app) saveSession() {
 	if Win == nil {
 		return // 单元测试不碰真实临时目录

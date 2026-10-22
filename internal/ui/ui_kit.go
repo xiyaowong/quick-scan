@@ -35,10 +35,8 @@ const (
 	toneDanger
 )
 
-func styledButton(c *ui.Context, label string, ic *ui.SVG, tone buttonTone, disabled bool) ui.Element {
-	b := ui.ButtonBase(c).Height(40).Padding(0, 16, 0, 16).Radius(8).Disabled(disabled).
-		Transition(ui.ElementTransition{Duration: 130 * time.Millisecond, Colors: true})
-
+// 所有按音调上色的按钮都走这里：主按钮换色时不会漏掉某一处。
+func paintButton(b ui.Element, tone buttonTone, disabled bool) ui.Color {
 	hover := b.Hovered() && !disabled
 	pressed := b.Pressed() && !disabled
 
@@ -101,6 +99,13 @@ func styledButton(c *ui.Context, label string, ic *ui.SVG, tone buttonTone, disa
 			fg = colInk
 		}
 	}
+	return fg
+}
+
+func styledButton(c *ui.Context, label string, ic *ui.SVG, tone buttonTone, disabled bool) ui.Element {
+	b := ui.ButtonBase(c).Height(40).Padding(0, 16, 0, 16).Radius(8).Disabled(disabled).
+		Transition(ui.ElementTransition{Duration: 130 * time.Millisecond, Colors: true})
+	fg := paintButton(b, tone, disabled)
 
 	weight := 500
 	if tone == tonePrimary || tone == toneOutline || tone == toneDanger {
@@ -219,7 +224,6 @@ func statusDot(c *ui.Context, color ui.Color) {
 	})
 }
 
-// 状态栏里的打印机状态，比左边的绿点更具体。
 func printerPill(c *ui.Context, text string, fg, bg ui.Color) {
 	ui.Row(c).Padding(5, 10, 5, 10).Radius(999).Background(bg).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, text).FontSize(11).FontWeight(500).TextColor(fg).SingleLine()

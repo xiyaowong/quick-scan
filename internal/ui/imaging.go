@@ -9,12 +9,10 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// thumbnail 生成 240px 级的低清缩略图位图
 func thumbnail(src *image.RGBA, maxDim int) *ui.Bitmap {
 	return ui.NewBitmap(thumbRGBA(src, maxDim))
 }
 
-// thumbRGBA 留下缩略图的像素：旋转时转它，不必重新解码原图。
 func thumbRGBA(src *image.RGBA, maxDim int) *image.RGBA {
 	w, h := src.Bounds().Dx(), src.Bounds().Dy()
 	scale := float32(maxDim) / float32(max(w, h))

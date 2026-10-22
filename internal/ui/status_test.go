@@ -143,3 +143,28 @@ func TestStatusBarShowsPrinterState(t *testing.T) {
 		t.Fatalf("状态栏没跟着变：%v", tt.Texts())
 	}
 }
+
+// 状态栏短语和按钮原因来自同一处判定：按钮说「卡纸」时，状态栏不能还说「空闲」。
+func TestPrinterProblemDrivesBothViews(t *testing.T) {
+	cases := []struct {
+		name   string
+		feeder bool
+		st     scanner.Status
+		pill   string
+	}{
+		{"stopped", false, scanner.Status{State: "stopped"}, "需要检查"},
+		{"adf jam", true, scanner.Status{State: "idle", ADF: "ScannerAdfJam"}, "进纸口卡纸"},
+		{"busy", false, scanner.Status{State: "processing"}, "正在忙"},
+	}
+	for _, c := range cases {
+		a := onlineApp(c.feeder)
+		a.devStatus, a.devStatusIdx = c.st, 1
+		text, _, _ := a.printerState()
+		if text != c.pill {
+			t.Errorf("%s: 状态栏 = %q，want %q", c.name, text, c.pill)
+		}
+		if a.scanIssue().Text == "" {
+			t.Errorf("%s: 按钮灰了却没给原因", c.name)
+		}
+	}
+}

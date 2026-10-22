@@ -14,12 +14,18 @@ import (
 )
 
 func main() {
-	// 双击启动时摘掉控制台；从终端启动时保留，报错能看见。
 	platform.DetachIfStandalone()
 
-	// --ocr-test <图片>：不开窗口，跑一遍 OCR 文件名候选。
+	// --ocr-test <图片> [--ocr-raw|--ocr-rank]：不开窗口，跑一遍 OCR 文件名候选。
 	if len(os.Args) >= 3 && os.Args[1] == "--ocr-test" {
-		scanner.RunOcrTest(os.Args[2])
+		mode := ""
+		if len(os.Args) > 3 {
+			mode = os.Args[3]
+		}
+		if err := scanner.RunOcrTest(os.Args[2], mode); err != nil {
+			fmt.Fprintln(os.Stderr, "失败:", err)
+			os.Exit(1)
+		}
 		return
 	}
 	if err := run(); err != nil {
@@ -63,7 +69,6 @@ func run() (err error) {
 			Content:           myui.View(app.View),
 		})
 		appui.Win = win
-		// 有未导出页面时先确认再关。
 		win.OnClose(func(e *mygo.CloseEvent) {
 			if app.CloseAllowed() {
 				return

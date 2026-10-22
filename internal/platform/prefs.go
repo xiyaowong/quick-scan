@@ -23,7 +23,7 @@ type prefsData struct {
 
 func prefsPath() string { return filepath.Join(prefsDir(), prefsFileName) }
 
-// LoadExportDir 只认记录本身，不确认目录还在不在：
+// 只认记录本身，不确认目录还在不在：
 // 记着的可能是已经离线的网络盘，启动时去 stat 会卡住界面。
 func LoadExportDir() string {
 	data, err := os.ReadFile(prefsPath())
@@ -41,7 +41,6 @@ func LoadExportDir() string {
 	return dir
 }
 
-// ExportDirUsable 在导出前调用：被删掉、换了盘符、网络盘没连上都当作没有记录。
 func ExportDirUsable(dir string) bool {
 	if dir == "" {
 		return false

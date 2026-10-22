@@ -1,0 +1,12 @@
+# 全仓统一 LF。core.autocrlf=true 的机器上也能检出成 LF：
+# eol 属性优先于 core.autocrlf，不用每个开发各自改配置。
+* text=auto eol=lf
+
+# 二进制：不做换行转换，也不参与文本 diff。
+*.ico    binary
+*.png    binary
+*.onnx   binary
+*.exe    binary
+*.lib    binary
+*.dll    binary
+*.syso   binary

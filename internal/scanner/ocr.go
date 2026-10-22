@@ -3,7 +3,7 @@ package scanner
 
 import (
 	"fmt"
-	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -45,7 +45,7 @@ func SuggestRanking(imgPath string, rot int) (*ranking, error) {
 //
 // 没有版面分析模型，用几何启发式逼近"哪一行是标题"：
 // 字号明显大于正文、位置靠上、横向铺得开；正文段落则同字号同左边界成串。
-// 阈值都在这一节，调参用 --ocr-test <图片> --ocr-rank 看明细。
+// 调参用 --ocr-test <图片> --ocr-rank 看明细。
 
 const (
 	maxCandidates = 8  // 给用户多少条候选（对话框里 Wrap 换行，多给几条不碍事）
@@ -61,7 +61,7 @@ type ocrPick struct {
 	body   bool // 属于正文段落（markParagraphs 判定）
 }
 
-// dropBody 去除正文段落行；全被去掉时返回空（调用方据此回退）
+// 全被去掉时返回空（调用方据此回退）
 func dropBody(picks []ocrPick) []ocrPick {
 	out := make([]ocrPick, 0, len(picks))
 	for _, p := range picks {
@@ -103,7 +103,7 @@ func candidateRanking(lines []ocrLine, frameW, frameH int) *ranking {
 	if len(heights) == 0 {
 		return r
 	}
-	sort.Slice(heights, func(i, j int) bool { return heights[i] < heights[j] })
+	slices.Sort(heights)
 	r.medianH = heights[len(heights)/2]
 	if r.medianH <= 0 {
 		return r
@@ -179,13 +179,8 @@ func candidateRanking(lines []ocrLine, frameW, frameH int) *ranking {
 	}
 
 	add := func(s string) {
-		if s == "" || len(r.out) >= maxCandidates {
+		if s == "" || len(r.out) >= maxCandidates || slices.Contains(r.out, s) {
 			return
-		}
-		for _, e := range r.out {
-			if e == s {
-				return
-			}
 		}
 		r.out = append(r.out, s)
 	}
@@ -209,7 +204,7 @@ func candidateRanking(lines []ocrLine, frameW, frameH int) *ranking {
 	return r
 }
 
-// markParagraphs 就地标记正文段落：上下相邻、字号一致、左边界对齐、行距正常。
+// 就地标记正文段落：上下相邻、字号一致、左边界对齐、行距正常。
 // 只看其中两项会把孤立的红头/落款误并进正文，所以三者缺一不可。
 func markParagraphs(ks []ocrKept, frameW int, medianH float32) {
 	// 按从上到下取索引（不动原切片顺序）
@@ -219,10 +214,7 @@ func markParagraphs(ks []ocrKept, frameW int, medianH float32) {
 	}
 	sort.SliceStable(idx, func(a, b int) bool { return ks[idx[a]].line.Top < ks[idx[b]].line.Top })
 
-	tol := frameW / 50
-	if tol < 2 {
-		tol = 2
-	}
+	tol := max(frameW/50, 2)
 	const minRun = 2 // 相邻两行同字号同左边界就是一整段（一页可能只识别出两行正文）
 
 	var run []int
@@ -271,28 +263,25 @@ func sameHeight(a, b float32) bool {
 	return d/m <= 0.12
 }
 
-func intAbs(v int) int {
-	if v < 0 {
-		return -v
-	}
-	return v
-}
-
 func joinTitle(parts []ocrPick) string {
 	var b strings.Builder
+	runes := 0 // 边拼边数：每轮 b.String() 都要把已经拼好的整段复制一遍
 	prevTop, prevH := float32(-1), float32(0)
 	for _, p := range parts {
 		// 不是紧挨着的下一行（中间隔了正文）就断开，别把不相干的两行粘一起
 		if prevTop >= 0 && p.top > prevTop+prevH*2.2 {
 			break
 		}
-		if utf8.RuneCountInString(b.String())+utf8.RuneCountInString(p.name) > maxNameRunes {
+		n := utf8.RuneCountInString(p.name)
+		if runes+n > maxNameRunes {
 			break
 		}
 		if b.Len() > 0 && needsSpaceBetween(b.String(), p.name) {
 			b.WriteRune(' ')
+			runes++
 		}
 		b.WriteString(p.name)
+		runes += n
 		prevTop, prevH = p.top, p.height
 	}
 	return b.String()
@@ -390,15 +379,15 @@ func labelColonIndex(name string) int {
 	return -1
 }
 
-// boilerplate 公文里反复出现、但几乎不可能是标题的词（前缀匹配）
+// 公文里反复出现、但几乎不可能是标题的词（前缀匹配）
 var boilerplate = []string{
 	"附件", "抄送", "抄报", "签发", "主题词", "密级", "编号", "页码", "合同编号",
 	"甲方", "乙方", "丙方", "日期", "名称", "单位", "地址", "电话", "传真",
 	"邮编", "网址", "邮箱", "第", "共",
 }
 
-// boilerplateSuffix 同样反复出现、但只出现在结尾的词。带长度限制：
-// "…文件"是红头（机关名+文件），但长标题里出现"文件"是正常的
+// 只出现在结尾的词，带长度限制："…文件"是红头（机关名+文件），
+// 但长标题里出现"文件"是正常的。
 var boilerplateSuffix = []string{"文件", "目录", "附表"}
 
 func hasBoilerplate(name string) bool {
@@ -459,7 +448,7 @@ func normalizeOCRText(s string) string {
 	return string(out)
 }
 
-// isCJK 汉字/假名/谚文（判定"字与字之间不用空格"用）
+// 汉字/假名/谚文：判定"字与字之间不用空格"。
 func isCJK(r rune) bool {
 	switch {
 	case r >= 0x4E00 && r <= 0x9FFF, // 中日韩统一表意
@@ -482,32 +471,25 @@ func clamp01(v float32) float32 {
 	return v
 }
 
-// RunOcrTest --ocr-test 的实现：对一张图片走完整候选管线并打印（验收用）。
-// --ocr-raw   打印全图原始识别行（不裁顶部、不过滤），看识别质量
-// --ocr-rank  打印候选打分明细（中位字号、每行的分数与惩罚项），调参用
-func RunOcrTest(imgPath string) {
-	mode := ""
-	if len(os.Args) > 3 {
-		mode = os.Args[3]
-	}
+// RunOcrTest 对一张图片走完整候选管线并打印（验收用）。
+// mode 空 = 最终候选；"--ocr-raw" 打印原始识别行；"--ocr-rank" 打印打分与惩罚明细。
+// 不在这里 os.Exit：退出码是 main 的事，库函数只负责报告失败。
+func RunOcrTest(imgPath, mode string) error {
 	t0 := time.Now()
 	switch mode {
 	case "--ocr-raw":
 		img, err := Decode(imgPath)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "失败:", err)
-			os.Exit(1)
+			return err
 		}
 		small := resizeToLongEdge(img, 1600)
 		png, err := encodePNG(small)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "失败:", err)
-			os.Exit(1)
+			return err
 		}
 		lines, err := ocrRecognize(png)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "识别失败:", err)
-			os.Exit(1)
+			return fmt.Errorf("识别失败: %w", err)
 		}
 		b := small.Bounds()
 		fmt.Printf("全图识别 %d 行（%dx%d，耗时 %v）：\n", len(lines), b.Dx(), b.Dy(), time.Since(t0))
@@ -518,8 +500,7 @@ func RunOcrTest(imgPath string) {
 	case "--ocr-rank":
 		r, err := SuggestRanking(imgPath, 0)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "失败:", err)
-			os.Exit(1)
+			return err
 		}
 		fmt.Printf("耗时 %v，中位字号 %.0f\n", time.Since(t0), r.medianH)
 		fmt.Printf("通过淘汰 %d 行，其中正文段落 %d 行：\n", len(r.all), len(r.bodyRank))
@@ -545,12 +526,12 @@ func RunOcrTest(imgPath string) {
 	default:
 		names, err := Suggest(imgPath, 0)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "失败:", err)
-			os.Exit(1)
+			return err
 		}
 		fmt.Printf("耗时 %v\n候选 %d 条:\n", time.Since(t0), len(names))
 		for i, n := range names {
 			fmt.Printf("  %d. %s\n", i+1, n)
 		}
 	}
+	return nil
 }

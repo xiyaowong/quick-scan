@@ -1,6 +1,6 @@
 //go:build windows && amd64 && cgo
 
-// ocrbridge 的 cgo 绑定：静态链 Rust staticlib，只搬运原始检测数据，筛选在 ocr.go。
+// 静态链 Rust staticlib，只搬运原始检测数据，筛选在 ocr.go。
 package scanner
 
 /*
@@ -40,7 +40,7 @@ import (
 	"quick-scan/internal/platform"
 )
 
-// ocrLine 一行原始识别结果：文字、置信度、相对输入图的文字框几何。
+// 一行原始识别结果：文字、置信度、相对输入图的文字框几何。
 type ocrLine struct {
 	Text   string
 	Score  float32
@@ -60,15 +60,20 @@ var (
 func ocrEngine() (unsafe.Pointer, error) {
 	ocrOnce.Do(func() {
 		dir := platform.ModelDir()
-		det := C.CString(filepath.Join(dir, "det.onnx"))
+		// 路径和长度必须来自同一个值：长度按另一份拼接算，改坏了也看不出来。
+		path := func(name string) (*C.char, C.size_t) {
+			s := filepath.Join(dir, name)
+			return C.CString(s), C.size_t(len(s))
+		}
+		det, detLen := path("det.onnx")
 		defer C.free(unsafe.Pointer(det))
-		rec := C.CString(filepath.Join(dir, "rec.onnx"))
+		rec, recLen := path("rec.onnx")
 		defer C.free(unsafe.Pointer(rec))
-		dict := C.CString(filepath.Join(dir, "dict.txt"))
+		dict, dictLen := path("dict.txt")
 		defer C.free(unsafe.Pointer(dict))
-		h := C.ocr_init((*C.uchar)(unsafe.Pointer(det)), C.size_t(len(filepath.Join(dir, "det.onnx"))),
-			(*C.uchar)(unsafe.Pointer(rec)), C.size_t(len(filepath.Join(dir, "rec.onnx"))),
-			(*C.uchar)(unsafe.Pointer(dict)), C.size_t(len(filepath.Join(dir, "dict.txt"))))
+		h := C.ocr_init((*C.uchar)(unsafe.Pointer(det)), detLen,
+			(*C.uchar)(unsafe.Pointer(rec)), recLen,
+			(*C.uchar)(unsafe.Pointer(dict)), dictLen)
 		if h == nil {
 			ocrInitErr = fmt.Errorf("OCR 初始化失败: %s", ocrErrText())
 			return
@@ -78,7 +83,6 @@ func ocrEngine() (unsafe.Pointer, error) {
 	return ocrHandle, ocrInitErr
 }
 
-// ocrRecognize 识别 PNG 字节，返回识别行
 func ocrRecognize(png []byte) ([]ocrLine, error) {
 	h, err := ocrEngine()
 	if err != nil {
@@ -116,7 +120,6 @@ func ocrRecognize(png []byte) ([]ocrLine, error) {
 	return out, nil
 }
 
-// ocrErrText 取 Rust 侧最近一次错误文本
 func ocrErrText() string {
 	var buf [1024]C.uchar
 	n := C.ocr_last_error(&buf[0], C.size_t(len(buf)))

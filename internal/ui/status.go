@@ -19,7 +19,7 @@ type statusTarget struct {
 	dev *scanner.DeviceInfo
 }
 
-// startStatusPoll 起一条独立的轮询协程：扫描卡住时它也照常刷新。
+// 扫描卡住时也要照常刷新，所以跟扫描协程分开。
 func (a *app) startStatusPoll() {
 	if Win == nil {
 		return // 单元测试不跑后台轮询
@@ -53,7 +53,7 @@ func (a *app) statusLoop() {
 	}
 }
 
-// pollStatusOnce 在轮询协程里跑：状态归主线程所有，网络请求不能碰它。
+// 状态归主线程所有，网络请求不能碰它。
 func (a *app) pollStatusOnce() {
 	tg := a.snapshotStatusTarget()
 	if tg.dev == nil {
@@ -76,7 +76,7 @@ func (a *app) pollStatusOnce() {
 	})
 }
 
-// snapshotStatusTarget 回主线程拷一份端点副本；没有可查的设备时返回零值。
+// 端点在主线程上拷贝，协程只读副本。
 func (a *app) snapshotStatusTarget() statusTarget {
 	got := make(chan statusTarget, 1)
 	Win.Update(func() {
@@ -110,43 +110,51 @@ type scanIssue struct {
 	Danger bool // 要用户动手的（卡纸、停住）用红色；忙只是提醒
 }
 
-// scanIssue 说明此刻为什么不能扫描。
+// 按钮为什么灰、状态栏为什么变色都从这里取：分开写两份会漂成两种说法。
+type printerProblem struct {
+	text   string // 状态栏短语
+	detail string // 按钮灰掉时给用户的说明
+	danger bool   // 要用户动手：红色
+}
+
+func (a *app) printerProblem() (printerProblem, bool) {
+	if a.devState != DevOnline {
+		return printerProblem{}, false
+	}
+	st := a.statusOf(a.current())
+	switch {
+	case st.Stopped():
+		return printerProblem{"需要检查", "打印机停了，看看是不是卡纸或盖子没关好。", true}, true
+	case a.feeder && st.ADFJam():
+		return printerProblem{"进纸口卡纸", "进纸口卡纸了，把纸取出来再扫描。", true}, true
+	case a.feeder && st.ADFDoorOpen():
+		return printerProblem{"进纸口没关好", "进纸口的盖子没关好，盖好再扫描。", true}, true
+	case st.Busy():
+		// 忙只是提醒：设备自己会空下来，不用用户动手。
+		return printerProblem{"正在忙", "打印机正在忙，等它扫完再点扫描。", false}, true
+	}
+	return printerProblem{}, false
+}
+
 // 进纸口缺纸不在此列：它会把玻璃板扫描一起挡住。
 // 状态没读到就不拦——有的设备根本不报 ScannerStatus。
 func (a *app) scanIssue() scanIssue {
-	if a.devState != DevOnline {
+	p, ok := a.printerProblem()
+	if !ok {
 		return scanIssue{}
 	}
-	st := a.statusOf(a.current())
-	switch {
-	case st.Stopped():
-		return scanIssue{Text: "打印机停了，看看是不是卡纸或盖子没关好。", Danger: true}
-	case a.feeder && st.ADFJam():
-		return scanIssue{Text: "进纸口卡纸了，把纸取出来再扫描。", Danger: true}
-	case a.feeder && st.ADFDoorOpen():
-		return scanIssue{Text: "进纸口的盖子没关好，盖好再扫描。", Danger: true}
-	case st.Busy():
-		return scanIssue{Text: "打印机正在忙，等它扫完再点扫描。"}
-	}
-	return scanIssue{}
+	return scanIssue{Text: p.detail, Danger: p.danger}
 }
 
-// printerState 状态栏里的打印机状态；没读到就返回空。
+// 没读到就返回空，别显示成「空闲」。
 func (a *app) printerState() (text string, fg, bg ui.Color) {
-	if a.devState != DevOnline {
-		return "", colMuted, ui.Transparent
+	if p, ok := a.printerProblem(); ok {
+		if p.danger {
+			return p.text, colDanger, colDangerSoft
+		}
+		return p.text, colWarn, colWarnSoft
 	}
-	st := a.statusOf(a.current())
-	switch {
-	case st.Stopped():
-		return "需要检查", colDanger, colDangerSoft
-	case a.feeder && st.ADFJam():
-		return "进纸口卡纸", colDanger, colDangerSoft
-	case a.feeder && st.ADFDoorOpen():
-		return "进纸口没关好", colDanger, colDangerSoft
-	case st.Busy():
-		return "正在忙", colWarn, colWarnSoft
-	case st.Known():
+	if a.devState == DevOnline && a.statusOf(a.current()).Known() {
 		return "空闲", colMuted, colPanelSoft
 	}
 	return "", colMuted, ui.Transparent

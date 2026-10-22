@@ -109,3 +109,20 @@ func TestDeviceCacheEmptyDoesNotOverwrite(t *testing.T) {
 		t.Fatalf("empty save clobbered cache: %+v", got)
 	}
 }
+
+// 缓存键、缓存文件和 DeviceInfo 必须用同一套规范化：
+// 否则同一台设备写成 "/eSCL/" 和 "eSCL" 会变成两台。
+func TestDeviceKeyNormalizesEndpoint(t *testing.T) {
+	a := DeviceInfo{IP: " 192.168.1.10 ", Port: 0, Path: "/eSCL/"}
+	b := DeviceInfo{IP: "192.168.1.10", Port: 80, Path: "eSCL"}
+	if DeviceKey(a) != DeviceKey(b) {
+		t.Fatalf("same device has two keys: %q vs %q", DeviceKey(a), DeviceKey(b))
+	}
+	if got, want := DeviceKey(a), "192.168.1.10:80/escl"; got != want {
+		t.Fatalf("key = %q, want %q", got, want)
+	}
+	// 地址无效时返回空键：调用方靠它跳过，而不是让坏记录互相合并成一条。
+	if got := DeviceKey(DeviceInfo{IP: "not-an-ip"}); got != "" {
+		t.Fatalf("bad address produced key %q", got)
+	}
+}

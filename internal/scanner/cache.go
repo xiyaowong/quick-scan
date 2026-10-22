@@ -44,7 +44,7 @@ type cachedDevice struct {
 
 func cachePath() string { return filepath.Join(cacheDir(), "devices.json") }
 
-// LoadCache 返回缓存的设备名单和上次选中的键；记录过期、损坏或一个可用条目都没有时返回空。
+// 记录过期、损坏或一个可用条目都没有时返回空。
 func LoadCache() ([]DeviceInfo, string) {
 	data, err := os.ReadFile(cachePath())
 	if err != nil {
@@ -64,10 +64,14 @@ func LoadCache() ([]DeviceInfo, string) {
 			break
 		}
 		d, ok := cd.deviceInfo()
-		if !ok || seen[DeviceKey(d)] {
+		if !ok {
 			continue
 		}
-		seen[DeviceKey(d)] = true
+		key := DeviceKey(d)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
 		devs = append(devs, d) // Online 先置 false：缓存的状态不算数，启动后重新探测
 	}
 	return devs, c.Selected
@@ -103,21 +107,13 @@ func SaveCache(devs []DeviceInfo, selected string) {
 }
 
 func makeCachedDevice(d DeviceInfo) (cachedDevice, bool) {
-	ip := net.ParseIP(strings.TrimSpace(d.IP)).To4()
-	if ip == nil {
+	ip, port, path, ok := normalizeEndpoint(d.IP, d.Port, d.Path)
+	if !ok {
 		return cachedDevice{}, false
-	}
-	port := d.Port
-	if port <= 0 || port > 65535 {
-		port = defaultPort
-	}
-	path := strings.Trim(strings.TrimSpace(d.Path), "/")
-	if path == "" {
-		path = defaultESCLPath
 	}
 	return cachedDevice{
 		Name:        strings.TrimSpace(d.Name),
-		IP:          ip.String(),
+		IP:          ip,
 		Port:        port,
 		Path:        path,
 		Online:      d.Online,
@@ -130,17 +126,9 @@ func makeCachedDevice(d DeviceInfo) (cachedDevice, bool) {
 }
 
 func (c cachedDevice) deviceInfo() (DeviceInfo, bool) {
-	ip := net.ParseIP(strings.TrimSpace(c.IP)).To4()
-	if ip == nil {
+	ip, port, path, ok := normalizeEndpoint(c.IP, c.Port, c.Path)
+	if !ok {
 		return DeviceInfo{}, false
-	}
-	port := c.Port
-	if port <= 0 || port > 65535 {
-		port = defaultPort
-	}
-	path := strings.Trim(strings.TrimSpace(c.Path), "/")
-	if path == "" {
-		path = defaultESCLPath
 	}
 	var resolutions []float32
 	for _, r := range c.Resolutions {
@@ -150,7 +138,7 @@ func (c cachedDevice) deviceInfo() (DeviceInfo, bool) {
 	}
 	return DeviceInfo{
 		Name:        strings.TrimSpace(c.Name),
-		IP:          ip.String(),
+		IP:          ip,
 		Port:        port,
 		Path:        path,
 		Online:      false, // 待本次启动探测确认
@@ -173,14 +161,28 @@ func cleanStrings(xs []string) []string {
 	return out
 }
 
-func DeviceKey(d DeviceInfo) string {
-	port := d.Port
+// 缓存文件、缓存键和 DeviceInfo 都从它取值：三处各写一遍的话，
+// 同一个设备会因为 "/eSCL/" 与 "eSCL" 被当成两台。
+func normalizeEndpoint(ip string, port int, path string) (string, int, string, bool) {
+	v4 := net.ParseIP(strings.TrimSpace(ip)).To4()
+	if v4 == nil {
+		return "", 0, "", false
+	}
 	if port <= 0 || port > 65535 {
 		port = defaultPort
 	}
-	path := strings.Trim(strings.TrimSpace(d.Path), "/")
+	path = strings.Trim(strings.TrimSpace(path), "/")
 	if path == "" {
 		path = defaultESCLPath
 	}
-	return strings.ToLower(d.IP + ":" + strconv.Itoa(port) + "/" + path)
+	return v4.String(), port, path, true
+}
+
+// 地址无效时返回空串，调用方据此跳过而不是拿空键互相合并。
+func DeviceKey(d DeviceInfo) string {
+	ip, port, path, ok := normalizeEndpoint(d.IP, d.Port, d.Path)
+	if !ok {
+		return ""
+	}
+	return strings.ToLower(ip + ":" + strconv.Itoa(port) + "/" + path)
 }

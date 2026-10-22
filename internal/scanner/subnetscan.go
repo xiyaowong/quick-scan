@@ -1,7 +1,4 @@
 // 网段扫描兜底：mDNS 被防火墙、路由器或虚拟网卡挡住时，直接逐个地址问 eSCL 能力。
-//
-// 扫描只负责"谁在那儿"，不碰设备列表、选中和探测——那些由 UI 层决定。
-// 找到一台不影响其它地址继续扫，结果逐台回调，程序可以马上用起来。
 package scanner
 
 import (
@@ -32,8 +29,7 @@ var scanHTTP = &http.Client{
 	},
 }
 
-// ScanSubnet 扫默认网卡所在网段，每发现一台 eSCL 设备回调一次。
-// 回调可能来自不同的 goroutine，调用方自己保证线程安全。
+// onFound 可能来自不同的 goroutine，调用方自己保证线程安全。
 func ScanSubnet(ctx context.Context, onFound func(DeviceInfo)) error {
 	local, subnet, err := defaultIPv4Net()
 	if err != nil {
@@ -49,7 +45,6 @@ func ScanSubnet(ctx context.Context, onFound func(DeviceInfo)) error {
 	return nil
 }
 
-// probeHosts 并发探测 hosts，找到一台回调一台。probe 可替换，测试不必真连网络。
 func probeHosts(ctx context.Context, hosts []net.IP,
 	probe func(context.Context, DeviceInfo) (DeviceInfo, bool), onFound func(DeviceInfo)) {
 	var reportMu sync.Mutex
@@ -84,7 +79,6 @@ func probeHosts(ctx context.Context, hosts []net.IP,
 	wg.Wait()
 }
 
-// defaultIPv4Net 返回默认出口的源地址和它所在的子网。
 func defaultIPv4Net() (net.IP, *net.IPNet, error) {
 	local, ifi, err := defaultIPv4Addr()
 	if err != nil {
@@ -98,8 +92,7 @@ func defaultIPv4Net() (net.IP, *net.IPNet, error) {
 	return local, subnet, nil
 }
 
-// scanHosts 列出待扫地址。按常见 DHCP 分配习惯排序：
-// 1–20、21–29（10–20 与第一段重叠）、100–119、200–219，其余从小到大。
+// scanHosts 按常见 DHCP 分配习惯排序，家用路由器分到的地址先扫。
 func scanHosts(local net.IP, subnet *net.IPNet) []net.IP {
 	ip4 := local.To4()
 	if ip4 == nil || subnet == nil {
@@ -154,8 +147,7 @@ func hostRank(last byte) int {
 	}
 }
 
-// probeESCL 问一次能力 XML：只有 200 且带 ScannerCapabilities 才算扫描仪，
-// 免得把路由器管理页之类同样回 200 的网页当成设备。
+// 只认 200 + ScannerCapabilities：路由器管理页之类同样回 200 的网页不能算设备。
 func probeESCL(ctx context.Context, d DeviceInfo) (DeviceInfo, bool) {
 	if d.Port == 0 {
 		d.Port = defaultPort

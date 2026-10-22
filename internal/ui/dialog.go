@@ -163,7 +163,6 @@ func (a *app) exportDoneView(c *ui.Context) {
 	})
 }
 
-// recoverDialog 上次异常退出时，临时目录里还留着扫描页。
 // 必须让用户明确选恢复或丢弃，点窗外/Esc 都不关：误关一下数据就没了。
 func (a *app) recoverDialog(c *ui.Context) {
 	n := len(a.recoverPages)
@@ -197,7 +196,6 @@ func (a *app) recoverDialog(c *ui.Context) {
 	})
 }
 
-// runExport 在后台串起三件事：选落点、导出、把结果写回界面。
 // 三步之间都要 Win.Update 回主线程，所以整段只在这一条协程里跑。
 func (a *app) runExport() {
 	if a.exportPicking {
@@ -225,7 +223,7 @@ func (a *app) runExport() {
 	}()
 }
 
-// exportJob 是一次导出的全部输入；goroutine 只读它，不再碰 a 的其它字段。
+// goroutine 只读它，不再碰 a 的其它字段。
 type exportJob struct {
 	name     string
 	format   ExportFormat
@@ -242,7 +240,6 @@ func (a *app) pageExports() []scanner.ExportPage {
 	return pages
 }
 
-// pickExportPath 弹出系统的保存对话框。返回 false 表示用户取消。
 func (a *app) pickExportPath(job exportJob) (string, bool) {
 	ext, filter := "pdf", "PDF 文件"
 	if job.format == ExportJPG {
@@ -264,7 +261,6 @@ func (a *app) pickExportPath(job exportJob) (string, bool) {
 	return path, err == nil && path != ""
 }
 
-// writeExport 真正写文件，并把进度和结果送回界面。
 func (a *app) writeExport(job exportJob, path string) {
 	dir := filepath.Dir(path)
 	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))

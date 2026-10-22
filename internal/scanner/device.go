@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// DeviceInfo 一台 eSCL 扫描仪。发现阶段只有名字/IP；探测后填能力。
+// DeviceInfo 一台 eSCL 扫描仪。
 // 列表会按在线状态重排，所以**位置不能当句柄**——Idx 才是（发现时的下标）。
 type DeviceInfo struct {
 	Idx         int       // 发现顺序下标：probe/scan 调度靠它找回设备
@@ -26,7 +26,6 @@ type DeviceInfo struct {
 	caps *scannerCapabilities // 探测到的原始能力，扫描时下发任务用
 }
 
-// DisplayName 设备选择器的显示格式：设备名 (IPv4)
 func (d *DeviceInfo) DisplayName() string {
 	name := d.Name
 	if name == "" {
@@ -49,7 +48,6 @@ func (d *DeviceInfo) SizeOK(key string) bool {
 	return slices.Contains(d.Sizes, key)
 }
 
-// DPIs 设备支持的清晰度（升序）。能力没上报时保留 300/600 两档兜底。
 func (d *DeviceInfo) DPIs() []int {
 	if d == nil || len(d.Resolutions) == 0 {
 		return []int{300, 600}
@@ -76,7 +74,6 @@ func (d *DeviceInfo) HasDPI(v int) bool {
 	return false
 }
 
-// DefaultDPI 优先 300；设备没有 300 时取最接近的一档。
 func (d *DeviceInfo) DefaultDPI() int {
 	choices := d.DPIs()
 	best := choices[0]
@@ -88,7 +85,6 @@ func (d *DeviceInfo) DefaultDPI() int {
 	return best
 }
 
-// IntentChoices 设备支持的用途；没上报时不提供切换（只有规范默认值）。
 func (d *DeviceInfo) IntentChoices() []string {
 	if d == nil || len(d.Intents) == 0 {
 		return []string{IntentDocument}

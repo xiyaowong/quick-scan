@@ -15,7 +15,6 @@ import (
 )
 
 func (a *app) view(c *ui.Context) {
-	// 根容器已经铺了主题背景，这里只挂界面主体。
 	c.SetTheme(lightTheme())
 	ui.Column(c).Fill().Children(func() {
 		a.titleBar(c)
@@ -167,7 +166,6 @@ func (a *app) pageCell(c *ui.Context, i int) {
 	card.ContextMenu(func(m *ui.Menu) { a.pageMenu(m, i, p.ID) })
 }
 
-// 右键菜单只作用于点到的这一页；多页用勾选导出。
 func (a *app) pageMenu(m *ui.Menu, i int, id uint64) {
 	if m.Item("看大图").Chosen() {
 		a.openLightbox(i)
@@ -357,7 +355,7 @@ func (a *app) colorField(c *ui.Context) {
 func (a *app) sourceField(c *ui.Context) {
 	dev := a.current()
 	sectionLabel(c, "放纸方式", dev != nil && !dev.Feeder)
-	// 没探测到进纸口时只留玻璃板：设备没这个功能，选项不该可点。
+	// 设备没进纸口，选项不该可点。
 	enabled := []bool{true, dev != nil && dev.Feeder}
 	cur := 0
 	if a.feeder {
@@ -391,21 +389,7 @@ func (a *app) scanButton(c *ui.Context) {
 
 	b := ui.ButtonBase(c).FillWidth().Height(44).Radius(8).Disabled(disabled).
 		Transition(ui.ElementTransition{Duration: 140 * time.Millisecond, Colors: true})
-	fg := ui.RGB(255, 255, 255)
-	switch {
-	case disabled:
-		b.Background(colLineSoft)
-		fg = colFaint
-	case b.Pressed():
-		b.Background(colAccentPress)
-	case b.Hovered():
-		b.Background(colAccentHover)
-	default:
-		b.Background(colAccent)
-	}
-	if !disabled {
-		b.Shadow(0, 3, 10, 0, shadowAccent)
-	}
+	fg := paintButton(b, tonePrimary, disabled)
 	b.Children(func() {
 		ui.Row(c).Gap(9).AlignItems(ui.Center).Children(func() {
 			if busy {
@@ -425,12 +409,12 @@ func (a *app) scanFeedback(c *ui.Context) {
 	issue := a.scanIssue()
 	switch {
 	case a.scanning:
-		// 设备不报扫到第几行，这是估算值，所以不给百分比数字。
+		// 估算值，不给百分比数字。
 		ui.Progress(c, a.scanProgress).FillWidth()
 	case a.devState == DevOffline && !a.probing:
 		notice(c, icoAlert, "这台打印机连不上，换一台试试。", colDanger, colDangerSoft)
 	case issue.Text != "":
-		// 按钮灰了，不说原因用户只会觉得点不动。
+		// 按钮灰了得说原因，不然用户只当点不动。
 		fg, bg := colWarn, colWarnSoft
 		if issue.Danger {
 			fg, bg = colDanger, colDangerSoft
@@ -481,7 +465,7 @@ func (a *app) exportButton(c *ui.Context) {
 	}
 }
 
-// 标题栏由视图自己画：系统按钮已隐藏，这一条既是拖动区，也放我们自己的按钮。
+// 系统按钮已隐藏，这一条既是拖动区，也放我们自己的按钮。
 func (a *app) titleBar(c *ui.Context) {
 	bar := ui.Row(c).Height(titleBarHeight).FillWidth().Background(colPanel).
 		AlignItems(ui.Center).DragWindow()
@@ -551,7 +535,6 @@ func (a *app) statusBar(c *ui.Context) {
 		ui.Text(c, a.statusLabel()).FontSize(11.5).FontWeight(500).TextColor(colMuted)
 
 		if len(a.devices) > 0 {
-			// 显示格式固定为「设备名 (IPv4)」
 			names := make([]string, len(a.devices))
 			for i, d := range a.devices {
 				if a.probed[d.Idx] && !d.Online {
@@ -722,7 +705,6 @@ func (a *app) lightboxOverlay(c *ui.Context) {
 				}
 			})
 
-			// Fill + Contain 把原图压进窗口，放大后再偏移查看。
 			imgRow := ui.Row(c).Grow(1).MinHeight(0).Center().Padding(8, 44, 8, 44).Clip()
 			imgRow.Children(func() {
 				if lb.Full == nil {

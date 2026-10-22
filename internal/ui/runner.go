@@ -11,10 +11,9 @@ import (
 // Win 主窗口。后台 goroutine 通过它回主线程刷新界面；无窗口的测试里为 nil。
 var Win *mygo.Window
 
-// App 主程序实例。
 type App struct{ a *app }
 
-// New 创建实例；上次异常退出留下的会话在这里转成待恢复状态。
+// 上次异常退出留下的会话在这里转成待恢复状态。
 func New() *App {
 	a := newApp()
 	a.lastExportDir = platform.LoadExportDir()
