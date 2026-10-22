@@ -206,10 +206,6 @@ func (a *app) runExport() {
 	}
 	fmt_ := a.exportFmt
 	startDir := a.lastExportDir
-	if startDir == "" {
-		home, _ := os.UserHomeDir()
-		startDir = filepath.Join(home, "Documents", "扫描件")
-	}
 	targets := a.exportTargets()
 	pages := make([]scanner.ExportPage, len(targets))
 	for i, p := range targets {
@@ -221,7 +217,12 @@ func (a *app) runExport() {
 		if fmt_ == ExportJPG {
 			ext, filter = "jpg", "JPG 图片"
 		}
-		def := filepath.Join(startDir, name+"."+ext)
+		// 只有文件名：没有记录时由系统决定落点，不能替用户编一个可能不存在的目录。
+		def := name + "." + ext
+		// 记录可能是上次关机前拔掉的网络盘，所以在协程里确认，别在主线程上等。
+		if startDir != "" && platform.ExportDirUsable(startDir) {
+			def = filepath.Join(startDir, def)
+		}
 		path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
 			Parent:      Win,
 			Title:       "导出",
@@ -253,7 +254,9 @@ func (a *app) runExport() {
 				a.scanStatus = "导出失败：" + expErr.Error()
 				return
 			}
+			// 导出成功才记住：用户取消或失败时选中的目录不算「上次保存的位置」。
 			a.lastExportDir = dir
+			platform.SaveExportDir(dir)
 			a.exportPhase = PhaseDone
 			a.exportDone = ExportDone{
 				Display:   out.Display,

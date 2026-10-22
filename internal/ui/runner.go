@@ -17,6 +17,7 @@ type App struct{ a *app }
 // New 创建实例；上次异常退出留下的会话在这里转成待恢复状态。
 func New() *App {
 	a := newApp()
+	a.lastExportDir = platform.LoadExportDir()
 	if pages, ok := platform.LoadSession(); ok {
 		a.recoverPages = pages
 		a.dlg = DlgRecover
