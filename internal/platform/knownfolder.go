@@ -3,15 +3,14 @@
 package platform
 
 import (
-	"runtime"
 	"syscall"
 	"unsafe"
 )
 
 var (
-	shell32            = syscall.NewLazyDLL("shell32.dll")
-	procSHGetKnownPath = shell32.NewProc("SHGetKnownFolderPath")
-	coTaskMemFree      = syscall.NewLazyDLL("ole32.dll").NewProc("CoTaskMemFree")
+	shell32                  = syscall.NewLazyDLL("shell32.dll")
+	procSHGetKnownFolderPath = shell32.NewProc("SHGetKnownFolderPath")
+	procCoTaskMemFree        = syscall.NewLazyDLL("ole32.dll").NewProc("CoTaskMemFree")
 )
 
 // FOLDERID_Documents {FDD39AD0-238F-46AF-ADB4-6C85480369C7}
@@ -22,14 +21,16 @@ var folderIDDocuments = syscall.GUID{
 	Data4: [8]byte{0xAD, 0xB4, 0x6C, 0x85, 0x48, 0x03, 0x69, 0xC7},
 }
 
-// DefaultExportDir 返回「文档」目录，拿不到（非 Windows、目录被重定向
-// 到不可达的网络盘等）就返回空串，调用方回落到系统默认位置。
+// DefaultExportDir 返回「文档」目录，拿不到（目录被重定向到不可达的
+// 网络盘等）就返回空串，调用方回落到系统默认位置。
 func DefaultExportDir() string {
-	if runtime.GOOS != "windows" {
+	// shell32/ole32 理论上必在，但和 console.go 一样先 Find 兜底：
+	// 这条路跑在导出 goroutine 里，panic 会带崩整个应用。
+	if procSHGetKnownFolderPath.Find() != nil || procCoTaskMemFree.Find() != nil {
 		return ""
 	}
 	var ptr *uint16
-	r1, _, _ := procSHGetKnownPath.Call(
+	r1, _, _ := procSHGetKnownFolderPath.Call(
 		uintptr(unsafe.Pointer(&folderIDDocuments)),
 		0, // dwFlags
 		0, // hToken（当前用户）
@@ -38,11 +39,11 @@ func DefaultExportDir() string {
 	if r1 != 0 || ptr == nil {
 		return ""
 	}
-	defer coTaskMemFree.Call(uintptr(unsafe.Pointer(ptr)))
+	defer procCoTaskMemFree.Call(uintptr(unsafe.Pointer(ptr)))
+	// Windows 的 syscall 没有 UTF16PtrToString（别的平台才有），自己数到 NUL。
 	return syscall.UTF16ToString(unsafe.Slice(ptr, wcslen(ptr)))
 }
 
-// wcslen 数以 NUL 结尾的 UTF-16 字符串长度。
 func wcslen(p *uint16) int {
 	n := 0
 	for *(*uint16)(unsafe.Add(unsafe.Pointer(p), n*2)) != 0 {

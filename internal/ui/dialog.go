@@ -246,13 +246,13 @@ func (a *app) pickExportPath(job exportJob) (string, bool) {
 		ext, filter = "jpg", "JPG 图片"
 	}
 	def := job.name + "." + ext
-	// 首次导出没有记录：默认到「文档」，别让系统对话框落到深层路径。
+	// 首次导出或记录的目录已消失，都默认到「文档」，
+	// 别让系统对话框落到深层路径。
 	startDir := job.startDir
-	if startDir == "" {
+	if startDir == "" || !platform.ExportDirUsable(startDir) {
 		startDir = platform.DefaultExportDir()
 	}
-	// 记录可能是上次关机前拔掉的网络盘，所以在这里确认，别在主线程上等。
-	if startDir != "" && platform.ExportDirUsable(startDir) {
+	if startDir != "" {
 		def = filepath.Join(startDir, def)
 	}
 	path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
