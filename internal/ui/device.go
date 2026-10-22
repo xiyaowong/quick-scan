@@ -487,7 +487,41 @@ func (a *app) applyDefaults(li int) {
 	if !d.HasIntent(a.intent) {
 		a.intent = d.DefaultIntent()
 	}
-	a.feeder = false
+	// 进纸口只在设备没有时才关掉：有进纸口的设备记住用户上次的选择。
+	if !d.Feeder {
+		a.feeder = false
+	}
+}
+
+// 恢复上次会话记下的扫描设置；越界的枚举当场丢弃回退默认，
+// DPI/Intent 不在此校验——换设备后由 applyDefaults 和界面下拉校准。
+func (a *app) restoreScanPrefs(s *platform.ScanPrefs) {
+	switch s.Color {
+	case int(ColorColor), int(ColorGray), int(ColorBW):
+		a.color = ColorMode(s.Color)
+	}
+	switch s.Size {
+	case int(SizeA4), int(SizeA5), int(SizeLetter):
+		a.size = PaperSize(s.Size)
+	}
+	if s.DPI > 0 {
+		a.dpi = s.DPI
+	}
+	if s.Intent != "" {
+		a.intent = s.Intent
+	}
+	a.feeder = s.Feeder
+}
+
+// 在 startScan 里调：真正用过的设置才值得跨会话记住。
+func (a *app) saveScanPrefs() {
+	platform.SaveScanPrefs(platform.ScanPrefs{
+		Color:  int(a.color),
+		Size:   int(a.size),
+		DPI:    a.dpi,
+		Intent: a.intent,
+		Feeder: a.feeder,
+	})
 }
 
 func (a *app) startScan() {
@@ -515,7 +549,8 @@ func (a *app) startScan() {
 	}
 	_ = platform.EnsurePagesDir()
 	dir := platform.SessionDir()
-	a.saveCache() // 用户真正用起来的设备，下次启动优先显示
+	a.saveCache()     // 用户真正用起来的设备，下次启动优先显示
+	a.saveScanPrefs() // 真正扫过的设置才值得记：改了没扫不算数，崩溃也不丢
 
 	go func() {
 		_, err := scanner.Scan(context.Background(), &dev, opts, scanner.ScanSink{

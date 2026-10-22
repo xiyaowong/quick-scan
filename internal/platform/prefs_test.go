@@ -81,3 +81,26 @@ func TestSaveExportDirIgnoresEmpty(t *testing.T) {
 		t.Fatalf("空值抹掉了记录：%q", got)
 	}
 }
+
+// 两类记忆各自保存：单独存扫描设置不能抹掉导出目录，反之亦然。
+func TestScanPrefsRoundTrip(t *testing.T) {
+	usePrefsDir(t)
+
+	if got := LoadScanPrefs(); got != nil {
+		t.Fatalf("没存过却读出了 %+v", got)
+	}
+	SaveExportDir(t.TempDir())
+	SaveScanPrefs(ScanPrefs{Color: 2, Size: 1, DPI: 600, Intent: "Photo", Feeder: true})
+
+	got := LoadScanPrefs()
+	if got == nil || *got != (ScanPrefs{Color: 2, Size: 1, DPI: 600, Intent: "Photo", Feeder: true}) {
+		t.Fatalf("LoadScanPrefs = %+v", got)
+	}
+	if LoadExportDir() == "" {
+		t.Fatal("存扫描设置抹掉了导出目录")
+	}
+	SaveExportDir(t.TempDir())
+	if got = LoadScanPrefs(); got == nil || *got != (ScanPrefs{Color: 2, Size: 1, DPI: 600, Intent: "Photo", Feeder: true}) {
+		t.Fatalf("存导出目录抹掉了扫描设置: %+v", got)
+	}
+}

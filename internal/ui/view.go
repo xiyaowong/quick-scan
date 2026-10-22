@@ -280,15 +280,16 @@ func (a *app) sizeSelectable(dev *scanner.DeviceInfo) bool {
 func (a *app) dpiField(c *ui.Context) {
 	dpis := a.current().DPIs()
 	sectionLabel(c, "清晰度", len(dpis) <= 1)
-	curDPI := a.dpi
-	if !slices.Contains(dpis, curDPI) {
-		curDPI = dpis[0]
+	// 越界的值（恢复的记忆来自别的设备）当场校准回列表内，
+	// 界面显示多少、扫描就下发行多少。
+	if !slices.Contains(dpis, a.dpi) {
+		a.dpi = dpis[0]
 	}
 	names := make([]string, len(dpis))
 	for i, v := range dpis {
 		names[i] = dpiLabel(v)
 	}
-	curName := dpiLabel(curDPI)
+	curName := dpiLabel(a.dpi)
 	if ui.Select(c, &curName, names).FillWidth().Height(38).Radius(9).Changed() {
 		if i := slices.Index(names, curName); i >= 0 {
 			a.dpi = dpis[i]
@@ -323,11 +324,11 @@ func intentLabel(v string) string {
 func (a *app) intentField(c *ui.Context) {
 	intents := a.current().IntentChoices()
 	sectionLabel(c, "扫描内容", len(intents) <= 1)
-	cur := a.intent
-	if !slices.ContainsFunc(intents, func(x string) bool { return strings.EqualFold(x, cur) }) {
-		cur = intents[0]
+	// 越界值当场校准，理由同 dpiField。
+	if !slices.ContainsFunc(intents, func(x string) bool { return strings.EqualFold(x, a.intent) }) {
+		a.intent = intents[0]
 	}
-	curName := intentLabel(cur)
+	curName := intentLabel(a.intent)
 	names := make([]string, len(intents))
 	for i, v := range intents {
 		names[i] = intentLabel(v)

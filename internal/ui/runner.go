@@ -17,6 +17,9 @@ type App struct{ a *app }
 func New() *App {
 	a := newApp()
 	a.lastExportDir = platform.LoadExportDir()
+	if s := platform.LoadScanPrefs(); s != nil {
+		a.restoreScanPrefs(s)
+	}
 	if pages, ok := platform.LoadSession(); ok {
 		a.recoverPages = pages
 		a.dlg = DlgRecover
