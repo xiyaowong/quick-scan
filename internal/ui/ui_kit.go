@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -206,7 +207,7 @@ func countBadge(c *ui.Context, n int) {
 	ui.Row(c).AlignItems(ui.Center).Gap(5).Padding(6, 12, 6, 12).Radius(999).
 		Background(colPanel).Border(1, colLine).Children(func() {
 		ui.Text(c, "共").FontSize(11.5).TextColor(colMuted)
-		ui.Text(c, itoa(n)).FontSize(13).FontWeight(700).TextColor(colAccent)
+		ui.Text(c, strconv.Itoa(n)).FontSize(13).FontWeight(700).TextColor(colAccent)
 		ui.Text(c, "页").FontSize(11.5).TextColor(colMuted)
 	})
 }

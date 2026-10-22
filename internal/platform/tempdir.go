@@ -21,7 +21,11 @@ var tempRoot = filepath.Join(os.TempDir(), tempPrefix+strconv.Itoa(os.Getpid()))
 // 正常退出由 Cleanup 删除；崩溃时走不到删除这一步，目录留着，下次启动据此恢复。
 func SessionDir() string { return sessionDir() }
 
-func PagesDir() string { return SessionDir() }
+// CacheDir 放跨启动还想知道的小记录（设备名单、上次导出的文件夹）。
+// 不走注册表、也不建配置目录：被临时文件清理掉只是回到默认状态。
+func CacheDir() string {
+	return filepath.Join(os.TempDir(), "quick-scan")
+}
 
 func CleanupStale() {
 	entries, err := os.ReadDir(os.TempDir())
@@ -46,5 +50,5 @@ func Cleanup() {
 }
 
 func EnsurePagesDir() error {
-	return os.MkdirAll(PagesDir(), 0o755)
+	return os.MkdirAll(SessionDir(), 0o755)
 }

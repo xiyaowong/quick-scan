@@ -40,28 +40,33 @@ func (a *app) startDetect() {
 		devs, mdnsErr := scanner.Discover(context.Background())
 		Win.Update(func() {
 			a.detecting = false
-			switch {
-			case mdnsErr != nil:
-				// 先不报错：网段扫描还能兜底，等它跑完再决定提示。
-				if len(a.devices) == 0 {
-					a.applyDetect(nil)
-				}
-			case len(a.devices) == 0:
-				a.applyDetect(devs)
-				a.hint = ""
-				if len(devs) > 0 {
-					a.probeFirstOnline()
-				}
-			default:
-				a.mergeDetected(devs)
-			}
+			a.applyDiscovery(devs, mdnsErr)
 			// mDNS 找到了，或缓存里的设备已经连上：够用了，不必扫网段。
-			if len(devs) > 0 || a.anyDeviceOnline() {
-				return
+			if len(devs) == 0 && !a.anyDeviceOnline() {
+				a.startSubnetScan(mdnsErr)
 			}
-			a.startSubnetScan(mdnsErr)
 		})
 	}()
+}
+
+// applyDiscovery 把一轮 mDNS 结果并进设备列表。有名单时的合并逻辑和首轮建表不同，
+// 所以分两条路；mDNS 报错时先把提示留着，网段扫描还能兜底。
+func (a *app) applyDiscovery(found []scanner.DeviceInfo, mdnsErr error) {
+	if mdnsErr != nil {
+		if len(a.devices) == 0 {
+			a.applyDetect(nil)
+		}
+		return
+	}
+	if len(a.devices) > 0 {
+		a.mergeDetected(found)
+		return
+	}
+	a.applyDetect(found)
+	a.hint = ""
+	if len(found) > 0 {
+		a.probeFirstOnline()
+	}
 }
 
 // anyDeviceOnline 有能用的设备就不扫网段，否则每次启动都会白扫一遍 254 个地址。
@@ -146,8 +151,9 @@ func (a *app) recheckAll() {
 	a.probeFirstUnprobed()
 }
 
-// applyCached 把缓存名单放进状态，先全部当"未探测"；能力字段照常可用。
-func (a *app) applyCached(devs []scanner.DeviceInfo, selected string) {
+// resetDevices 用一份新名单整体替换设备状态：身份重编、探测记录清空，
+// 在途的探测按代际号作废——旧结果回来时自己丢弃，不用谁去追。
+func (a *app) resetDevices(devs []scanner.DeviceInfo) {
 	a.devGen++
 	a.probeSeq++
 	a.devices = nil
@@ -158,18 +164,23 @@ func (a *app) applyCached(devs []scanner.DeviceInfo, selected string) {
 	a.probingIdx = 0
 	a.userPicked = false
 	a.nextDevIdx = 0
+	a.devSel = 0
 	for _, d := range devs {
 		d.Idx = a.allocDevIdx()
 		d.Online = false
 		a.devices = append(a.devices, d)
 	}
-	a.devSel = 0
+	a.hint = ""
+}
+
+// applyCached 把缓存名单放进状态，先全部当"未探测"；能力字段照常可用。
+func (a *app) applyCached(devs []scanner.DeviceInfo, selected string) {
+	a.resetDevices(devs)
 	if selected != "" {
 		if i := a.indexByKey(selected); i >= 0 {
 			a.devSel = i
 		}
 	}
-	a.hint = ""
 	a.refreshState()
 }
 
@@ -348,18 +359,16 @@ func (a *app) requestProbe(idx int, auto bool) {
 				return
 			}
 			a.probed[idx] = true
-			if err != nil {
-				dev.Online = false
+			ok := err == nil
+			a.hint = ""
+			if !ok {
 				// 明确失败：能力留空，refreshState 会标红；接力中提示会被下一次覆盖。
+				dev.Online = false
 				a.hint = err.Error()
-			} else {
-				// 连上了就擦掉"正在连接 …"，状态交给状态栏绿点。
-				a.hint = ""
 			}
 			dev.Idx = idx
 			dev.Name = a.devices[cur].Name // 名单里的名字更短
 			a.devices[cur] = dev
-			ok := err == nil
 			// 接力的落点：这就是"第一台在线的"，选中它并停
 			if ok && auto && !a.userPicked {
 				a.devSel = cur
@@ -449,23 +458,7 @@ func (a *app) sortDevices() {
 
 // applyDetect 探测结果落进状态：只有名单没有能力，代际号 +1 作废旧探测。
 func (a *app) applyDetect(devs []scanner.DeviceInfo) {
-	a.devGen++
-	a.probeSeq++ // 作废还在路上的旧探测
-	a.devices = nil
-	a.nextDevIdx = 0
-	for _, d := range devs {
-		d.Idx = a.allocDevIdx()
-		d.Online = false
-		a.devices = append(a.devices, d)
-	}
-	a.devSel = 0
-	a.probed = map[int]bool{}
-	a.autoQueue = nil
-	a.pendingProbe = false
-	a.probing = false
-	a.probingIdx = 0
-	a.userPicked = false // 新一轮检测，重新允许自动选中第一台在线的
-	a.hint = ""
+	a.resetDevices(devs)
 	a.refreshState()
 }
 
@@ -520,22 +513,26 @@ func (a *app) startScan() {
 		Intent: a.intent,
 	}
 	_ = platform.EnsurePagesDir()
-	dir := platform.PagesDir()
+	dir := platform.SessionDir()
 	a.saveCache() // 用户真正用起来的设备，下次启动优先显示
 
 	go func() {
-		_, err := scanner.Scan(context.Background(), &dev, opts, dir, func(f float64) {
-			Win.Update(func() { a.scanProgress = f })
-		}, func(path string) {
+		_, err := scanner.Scan(context.Background(), &dev, opts, scanner.ScanSink{
+			Dir: dir,
+			Progress: func(f float64) {
+				Win.Update(func() { a.scanProgress = f })
+			},
 			// 每下完一页就解码缩略图并登记，整批扫完前崩溃也不丢已扫的页。
-			p, perr := makePage(path, 0)
-			Win.Update(func() {
-				if perr != nil {
-					a.scanStatus = "扫描结果读取失败：" + perr.Error()
-					return
-				}
-				a.appendPage(p)
-			})
+			OnPage: func(path string) {
+				p, perr := makePage(path, 0)
+				Win.Update(func() {
+					if perr != nil {
+						a.scanStatus = "扫描结果读取失败：" + perr.Error()
+						return
+					}
+					a.appendPage(p)
+				})
+			},
 		})
 		Win.Update(func() {
 			a.scanning = false

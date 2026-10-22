@@ -246,7 +246,7 @@ func markParagraphs(ks []ocrKept, frameW int, medianH float32) {
 		prev := ks[run[len(run)-1]].line
 		cur := ks[i].line
 		if sameHeight(prev.Height, cur.Height) &&
-			intAbs(int(prev.Left)-int(cur.Left)) <= tol &&
+			absInt(int(prev.Left)-int(cur.Left)) <= tol &&
 			cur.Top-prev.Top <= prev.Height*1.8 {
 			run = append(run, i)
 		} else {

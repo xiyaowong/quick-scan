@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 	"path/filepath"
+	"strconv"
 
 	"quick-scan/internal/platform"
 	"quick-scan/internal/scanner"
@@ -10,6 +11,8 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+// 零值就是默认项（彩色、A4）：新装、换设备时兜底用的正是这两个，
+// 所以不设 Unknown，也就不用为了「没选过」再判一次。
 type ColorMode int
 
 const (
@@ -283,7 +286,7 @@ func newApp() *app {
 		probed:       map[int]bool{},
 		size:         SizeA4,
 		dpi:          300,
-		intent:       scanner.DefaultIntent,
+		intent:       scanner.IntentDocument,
 		color:        ColorColor,
 		nextPageID:   1,
 		selected:     map[uint64]bool{},
@@ -344,36 +347,41 @@ func (a *app) refreshState() {
 	}
 }
 
+// movePages 把 rows 指向的页整体挪到 to 位置上。
 func (a *app) movePages(rows []int, to int) {
 	if len(rows) == 0 {
 		return
 	}
-	set := map[int]bool{}
+	moving := make(map[int]bool, len(rows))
 	for _, r := range rows {
-		set[r] = true
-	}
-	var moving, rest []Page
-	for i, p := range a.pages {
-		if set[i] {
-			moving = append(moving, p)
-		} else {
-			rest = append(rest, p)
+		if r >= 0 && r < len(a.pages) {
+			moving[r] = true
 		}
 	}
+	// 抽走前面的页之后，原来的 to 在剩下的页里要往前挪这么多格。
 	insert := to
-	for _, r := range rows {
+	for r := range moving {
 		if r < to {
 			insert--
 		}
 	}
-	if insert < 0 {
-		insert = 0
+
+	// 先按页数预分配：拖拽排序每帧都可能走一次，反复扩容会留下一串中间切片。
+	// rows 来自界面，与其信它不越界，不如把容量夹一下——负容量会直接 panic。
+	rest := make([]Page, 0, max(0, len(a.pages)-len(rows)))
+	dragged := make([]Page, 0, len(rows))
+	for i, p := range a.pages {
+		if moving[i] {
+			dragged = append(dragged, p)
+			continue
+		}
+		rest = append(rest, p)
 	}
-	if insert > len(rest) {
-		insert = len(rest)
-	}
-	out := append([]Page{}, rest[:insert]...)
-	out = append(out, moving...)
+	insert = max(0, min(insert, len(rest)))
+
+	out := make([]Page, 0, len(a.pages))
+	out = append(out, rest[:insert]...)
+	out = append(out, dragged...)
 	out = append(out, rest[insert:]...)
 	a.pages = out
 	if a.lightbox != nil {
@@ -431,29 +439,7 @@ func (a *app) selectedPages() []Page {
 	return out
 }
 
-func pageLabel(i int) string { return "第 " + itoa(i+1) + " 页" }
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var b [20]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		b[i] = '-'
-	}
-	return string(b[i:])
-}
+func pageLabel(i int) string { return "第 " + strconv.Itoa(i+1) + " 页" }
 
 func clamp(v, lo, hi float32) float32 {
 	if v < lo {

@@ -6,6 +6,7 @@ import (
 )
 
 // WriteFileAtomic 同目录写临时文件再改名：崩溃或断电时不会留下半份 JSON。
+// dirPerm 只管目录：%TEMP% 下的记录用 0700，会话目录要能被资源管理器打开，用 0755。
 func WriteFileAtomic(path string, data []byte, dirPerm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
@@ -17,17 +18,16 @@ func WriteFileAtomic(path string, data []byte, dirPerm os.FileMode) error {
 	}
 	tmp := f.Name()
 	_, werr := f.Write(data)
-	cerr := f.Close()
-	if werr == nil {
+	// 先 Close 再 Rename：Windows 上打开着的文件改不了名。
+	if cerr := f.Close(); werr == nil {
 		werr = cerr
+	}
+	if werr == nil {
+		werr = os.Rename(tmp, path)
 	}
 	if werr != nil {
 		_ = os.Remove(tmp)
 		return werr
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
 	}
 	return nil
 }

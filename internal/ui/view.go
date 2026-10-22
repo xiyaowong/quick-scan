@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,17 +15,17 @@ import (
 )
 
 func (a *app) view(c *ui.Context) {
+	// 根容器已经铺了主题背景，这里只挂界面主体。
 	c.SetTheme(lightTheme())
-	t := c.Theme()
-	ui.Column(c).Fill().Background(t.Background).Children(func() {
+	ui.Column(c).Fill().Children(func() {
 		a.titleBar(c)
 		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
-			a.pagesPanel(c, t)
-			a.settingsPanel(c, t)
+			a.pagesPanel(c)
+			a.settingsPanel(c)
 		})
-		a.statusBar(c, t)
+		a.statusBar(c)
 	})
-	a.overlays(c, t)
+	a.overlays(c)
 }
 
 func (a *app) statusLabel() string {
@@ -52,13 +53,13 @@ func statusColor(s DevState) ui.Color {
 	}
 }
 
-func (a *app) pagesPanel(c *ui.Context, t *ui.Theme) {
+func (a *app) pagesPanel(c *ui.Context) {
 	ui.Column(c).Grow(1).MinWidth(0).Padding(18, 18, 18, 14).Gap(14).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
 			ui.Text(c, "扫描页面").FontSize(19).FontWeight(600).TextColor(colInk)
 			ui.Row(c).Grow(1)
 			if n := a.selectedCount(); n > 0 {
-				ui.Text(c, "已选 "+itoa(n)+" 页").FontSize(12).FontWeight(500).TextColor(colAccent)
+				ui.Text(c, "已选 "+strconv.Itoa(n)+" 页").FontSize(12).FontWeight(500).TextColor(colAccent)
 				if n < len(a.pages) && textLink(c, "全选").Clicked() {
 					a.selectAll()
 				}
@@ -72,19 +73,19 @@ func (a *app) pagesPanel(c *ui.Context, t *ui.Theme) {
 		})
 
 		if len(a.pages) == 0 {
-			a.emptyState(c, t)
+			a.emptyState(c)
 			return
 		}
 
 		ui.GridView(c, &a.pageGrid, len(a.pages), 200, 280, func(i int) {
-			a.pageCell(c, t, i)
+			a.pageCell(c, i)
 		}).Grow(1)
 
 		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, icoGrip).FontSize(12).TextColor(colFaint)
 			hint := "点一下看大图 · 拖动可排序"
 			if n := a.selectedCount(); n > 0 {
-				hint = "导出时只导出勾选的 " + itoa(n) + " 页"
+				hint = "导出时只导出勾选的 " + strconv.Itoa(n) + " 页"
 			}
 			ui.Text(c, hint).FontSize(11).TextColor(colMuted)
 		})
@@ -96,7 +97,7 @@ func (a *app) pagesPanel(c *ui.Context, t *ui.Theme) {
 	}
 }
 
-func (a *app) emptyState(c *ui.Context, t *ui.Theme) {
+func (a *app) emptyState(c *ui.Context) {
 	ui.Column(c).Grow(1).Center().Children(func() {
 		halo := ui.Row(c).Size(64, 64).Radius(20).Background(colAccentSoft).Center()
 		halo.Children(func() {
@@ -110,7 +111,7 @@ func (a *app) emptyState(c *ui.Context, t *ui.Theme) {
 }
 
 // 不在这里 .Drag()：GridView 的 Reorder 已在外层挂了拖拽源，内层再挂会抢走按下事件。
-func (a *app) pageCell(c *ui.Context, t *ui.Theme, i int) {
+func (a *app) pageCell(c *ui.Context, i int) {
 	// 删除按钮在这一帧构建时就执行，pages 已经变短；GridView 仍按本帧开头的
 	// 页数继续建后面的格子，越界的先跳过——点击会触发重绘，下一遍就对齐了。
 	if i >= len(a.pages) {
@@ -148,14 +149,14 @@ func (a *app) pageCell(c *ui.Context, t *ui.Theme, i int) {
 		ui.Row(c).Height(42).Padding(0, 8, 0, 8).AlignItems(ui.Center).Gap(2).Children(func() {
 			ui.Icon(c, icoGrip).FontSize(11).TextColor(colFaint).Tooltip("按住拖动排序")
 			ui.Row(c).Grow(1)
-			if iconButton(c, icoRotate, "旋转 90°", 30).Label("旋转第 " + itoa(i+1) + " 页").Clicked() {
+			if iconButton(c, icoRotate, "旋转 90°", 30).Label("旋转第 " + strconv.Itoa(i+1) + " 页").Clicked() {
 				a.rotatePage(p.ID)
 			}
-			if iconButton(c, icoDownload, "导出此页", 30).Label("导出第 " + itoa(i+1) + " 页").Clicked() {
+			if iconButton(c, icoDownload, "导出此页", 30).Label("导出第 " + strconv.Itoa(i+1) + " 页").Clicked() {
 				a.openExport(i)
 			}
 			ui.Row(c).Width(1).Height(14).Background(colLineSoft).Margin(3, 0, 3, 0)
-			if dangerIconButton(c, icoTrash, "删除此页", 30).Label("删除第 " + itoa(i+1) + " 页").Clicked() {
+			if dangerIconButton(c, icoTrash, "删除此页", 30).Label("删除第 " + strconv.Itoa(i+1) + " 页").Clicked() {
 				a.deletePage(p.ID)
 			}
 		})
@@ -196,7 +197,7 @@ func padPage(n int) string { return fmt.Sprintf("%02d", n) }
 func (a *app) selectToggle(c *ui.Context, num int, id uint64) {
 	on := a.isSelected(id)
 	cb := ui.CheckboxBase(c, &on).Absolute().Right(8).Top(8).Size(24, 24).Radius(12).Center().
-		Label("勾选第 " + itoa(num) + " 页").Tooltip("勾选后可只导出这些页").
+		Label("勾选第 " + strconv.Itoa(num) + " 页").Tooltip("勾选后可只导出这些页").
 		Transition(ui.ElementTransition{Duration: 120 * time.Millisecond, Colors: true})
 	switch {
 	case on:
@@ -218,7 +219,7 @@ func (a *app) selectToggle(c *ui.Context, num int, id uint64) {
 	}
 }
 
-func (a *app) settingsPanel(c *ui.Context, t *ui.Theme) {
+func (a *app) settingsPanel(c *ui.Context) {
 	ui.Column(c).Width(railWidth).Padding(0, 18, 18, 18).Children(func() {
 		card := ui.Column(c).Fill().Background(colPanel).Border(1, colLine).Radius(12).
 			Clip().Shadow(0, 1, 6, 0, shadowSoft)
@@ -241,7 +242,7 @@ func (a *app) settingsPanel(c *ui.Context, t *ui.Theme) {
 			hairline(c)
 
 			ui.Column(c).Padding(12, 18, 16, 18).Gap(10).Children(func() {
-				a.scanButton(c, t)
+				a.scanButton(c)
 				a.scanFeedback(c)
 				ui.Row(c).Gap(8).Children(func() {
 					a.clearLink(c)
@@ -254,8 +255,7 @@ func (a *app) settingsPanel(c *ui.Context, t *ui.Theme) {
 
 func (a *app) sizeField(c *ui.Context) {
 	dev := a.current()
-	fixed := dev != nil && a.sizeSelectable(dev)
-	sectionLabel(c, "纸张大小", fixed)
+	sectionLabel(c, "纸张大小", a.sizeSelectable(dev))
 	enabled := []bool{true, true, true}
 	if dev != nil {
 		enabled = []bool{dev.SizeOK(SizeA4.key()), dev.SizeOK(SizeA5.key()), dev.SizeOK(SizeLetter.key())}
@@ -286,17 +286,14 @@ func (a *app) dpiField(c *ui.Context) {
 	if !slices.Contains(dpis, curDPI) {
 		curDPI = dpis[0]
 	}
-	curName := dpiLabel(curDPI)
 	names := make([]string, len(dpis))
 	for i, v := range dpis {
 		names[i] = dpiLabel(v)
 	}
+	curName := dpiLabel(curDPI)
 	if ui.Select(c, &curName, names).FillWidth().Height(38).Radius(9).Changed() {
-		for i, name := range names {
-			if name == curName {
-				a.dpi = dpis[i]
-				break
-			}
+		if i := slices.Index(names, curName); i >= 0 {
+			a.dpi = dpis[i]
 		}
 	}
 	caption(c, "数字越大越清楚，扫得也越慢。")
@@ -306,7 +303,7 @@ func dpiLabel(v int) string {
 	if v == 300 {
 		return "300 dpi（推荐）"
 	}
-	return itoa(v) + " dpi"
+	return strconv.Itoa(v) + " dpi"
 }
 
 var intentLabels = map[string]string{
@@ -338,11 +335,8 @@ func (a *app) intentField(c *ui.Context) {
 		names[i] = intentLabel(v)
 	}
 	if ui.Select(c, &curName, names).FillWidth().Height(38).Radius(9).Changed() {
-		for i, name := range names {
-			if name == curName {
-				a.intent = intents[i]
-				break
-			}
+		if i := slices.Index(names, curName); i >= 0 {
+			a.intent = intents[i]
 		}
 	}
 }
@@ -362,8 +356,8 @@ func (a *app) colorField(c *ui.Context) {
 
 func (a *app) sourceField(c *ui.Context) {
 	dev := a.current()
-	fixed := dev != nil && !dev.Feeder
-	sectionLabel(c, "放纸方式", fixed)
+	sectionLabel(c, "放纸方式", dev != nil && !dev.Feeder)
+	// 没探测到进纸口时只留玻璃板：设备没这个功能，选项不该可点。
 	enabled := []bool{true, dev != nil && dev.Feeder}
 	cur := 0
 	if a.feeder {
@@ -379,7 +373,7 @@ func (a *app) sourceField(c *ui.Context) {
 	}
 }
 
-func (a *app) scanButton(c *ui.Context, t *ui.Theme) {
+func (a *app) scanButton(c *ui.Context) {
 	off := a.devState != DevOnline
 	issue := a.scanIssue()
 	blocked := issue.Text != ""
@@ -478,7 +472,7 @@ func (a *app) exportButton(c *ui.Context) {
 	tip := "PDF 或 JPG，导出全部页面"
 	if n > 0 {
 		label = "导出选中"
-		tip = "PDF 或 JPG，只导出勾选的 " + itoa(n) + " 页"
+		tip = "PDF 或 JPG，只导出勾选的 " + strconv.Itoa(n) + " 页"
 	}
 	b := styledButton(c, label, icoDownload, toneOutline, !enabled).Grow(1).Height(38)
 	b.Tooltip(tip)
@@ -548,7 +542,7 @@ func windowButton(c *ui.Context, ic *ui.SVG, label string, danger bool) ui.Eleme
 	return b
 }
 
-func (a *app) statusBar(c *ui.Context, t *ui.Theme) {
+func (a *app) statusBar(c *ui.Context) {
 	hairline(c)
 	ui.Row(c).Height(statusBarHeight).FillWidth().Padding(0, 18, 0, 18).
 		Background(colPanel).AlignItems(ui.Center).Gap(10).Children(func() {
@@ -572,7 +566,7 @@ func (a *app) statusBar(c *ui.Context, t *ui.Theme) {
 					if n == cur {
 						a.devSel = i
 						a.refreshState()
-						a.probeSelected() // 选谁才探谁——连接成本只在用户点了它时付
+						a.probeSelected()        // 选谁才探谁——连接成本只在用户点了它时付
 						a.requestStatusRefresh() // 换设备后立刻取状态
 						break
 					}
@@ -614,18 +608,18 @@ func (a *app) statusBar(c *ui.Context, t *ui.Theme) {
 	})
 }
 
-func (a *app) overlays(c *ui.Context, t *ui.Theme) {
+func (a *app) overlays(c *ui.Context) {
 	if a.lightbox != nil {
-		a.lightboxOverlay(c, t)
+		a.lightboxOverlay(c)
 		return
 	}
 	switch a.dlg {
 	case DlgExport:
-		a.exportDialog(c, t)
+		a.exportDialog(c)
 	case DlgRecover:
-		a.recoverDialog(c, t)
+		a.recoverDialog(c)
 	case DlgQuitConfirm:
-		a.confirmDialog(c, t, "要退出吗？",
+		a.confirmDialog(c, "要退出吗？",
 			fmt.Sprintf("还有 %d 页没导出，退出后这些页面就没了。", a.pageCount()),
 			"退出", func() {
 				a.quitConfirmed = true
@@ -633,7 +627,7 @@ func (a *app) overlays(c *ui.Context, t *ui.Theme) {
 				Win.Close()
 			})
 	case DlgClearConfirm:
-		a.confirmDialog(c, t, "要清空全部页面吗？",
+		a.confirmDialog(c, "要清空全部页面吗？",
 			fmt.Sprintf("共 %d 页，清空后无法恢复。", len(a.pages)),
 			"清空", func() {
 				a.pages = nil
@@ -644,7 +638,7 @@ func (a *app) overlays(c *ui.Context, t *ui.Theme) {
 	}
 }
 
-func (a *app) confirmDialog(c *ui.Context, t *ui.Theme, title, detail, okLabel string, onOK func()) {
+func (a *app) confirmDialog(c *ui.Context, title, detail, okLabel string, onOK func()) {
 	open := a.dlg != DlgNone
 	ui.Modal(c, &open, func() {
 		card := ui.Column(c).Width(404).Background(colPanel).Border(1, colLine).
@@ -675,7 +669,7 @@ func (a *app) confirmDialog(c *ui.Context, t *ui.Theme, title, detail, okLabel s
 	}
 }
 
-func (a *app) lightboxOverlay(c *ui.Context, t *ui.Theme) {
+func (a *app) lightboxOverlay(c *ui.Context) {
 	lb := a.lightbox
 	white := func(a float32) ui.Color { return ui.RGBA(255, 255, 255, a) }
 	ui.Overlay(c, func() {

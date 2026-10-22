@@ -55,6 +55,21 @@ type mdnsQuery struct {
 	msg []byte
 }
 
+// newBrowser 准备好一个空的浏览状态；map 全部初始化，收包时不必再判空。
+func newBrowser() *mdnsBrowser {
+	return &mdnsBrowser{
+		records:    map[string]*serviceRecord{},
+		addrs:      map[string]string{},
+		responders: map[string]bool{},
+		packets:    make(chan mdnsPacket, 128),
+		done:       make(chan struct{}),
+	}
+}
+
+// 单播读循环超时短、退得早。没有截止时间就会一直阻塞到 socket 关闭，
+// 每次超时重试留一点余量，别让 readLoop 在应答刚到时空转一圈。
+const unicastReadDeadline = 250 * time.Millisecond
+
 // ctx 超时即停止，返回已找到的。
 func Discover(ctx context.Context) ([]DeviceInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, discoverWait)
@@ -65,13 +80,7 @@ func Discover(ctx context.Context) ([]DeviceInfo, error) {
 		return nil, err
 	}
 	defer mc.Close()
-	b := &mdnsBrowser{
-		records:    map[string]*serviceRecord{},
-		addrs:      map[string]string{},
-		responders: map[string]bool{},
-		packets:    make(chan mdnsPacket, 128),
-		done:       make(chan struct{}),
-	}
+	b := newBrowser()
 	defer b.close()
 
 	// 单播查询用临时端口；只有接收组播 PTR 应答需要绑定 5353。
@@ -83,7 +92,7 @@ func Discover(ctx context.Context) ([]DeviceInfo, error) {
 
 	go b.readLoop(mc.read)
 	go b.readLoop(func(buf []byte) (int, net.IP, error) {
-		uc.SetReadDeadline(time.Now().Add(250 * time.Millisecond))
+		uc.SetReadDeadline(time.Now().Add(unicastReadDeadline))
 		n, src, err := uc.ReadFromUDP(buf)
 		if err != nil {
 			return 0, nil, err
@@ -140,7 +149,7 @@ func openMulticastSocket() (*multicastSocket, error) {
 func (s *multicastSocket) send(buf []byte) { s.conn.WriteToUDP(buf, mdnsGroup) }
 
 func (s *multicastSocket) read(buf []byte) (int, net.IP, error) {
-	s.conn.SetReadDeadline(time.Now().Add(250 * time.Millisecond))
+	s.conn.SetReadDeadline(time.Now().Add(unicastReadDeadline))
 	n, src, err := s.conn.ReadFromUDP(buf)
 	if err != nil {
 		return 0, nil, err
@@ -320,12 +329,8 @@ func (b *mdnsBrowser) handle(p mdnsPacket) {
 			rec.host = r.Target
 		case *dns.TXT:
 			rec := b.record(r.Hdr.Name)
-			for _, kv := range r.Txt {
-				i := strings.IndexByte(kv, '=')
-				if i <= 0 {
-					continue
-				}
-				rec.txt[strings.ToLower(strings.TrimSpace(kv[:i]))] = kv[i+1:]
+			for k, v := range parseTXT(r.Txt) {
+				rec.txt[k] = v
 			}
 		case *dns.A:
 			if v4 := r.A.To4(); v4 != nil {
@@ -433,6 +438,7 @@ func unescapeDNSName(s string) string {
 	return b.String()
 }
 
+// parseTXT 把 "key=value" 形式的 TXT 记录摊成小写键的映射；没有等号或键为空的行直接跳过。
 func parseTXT(text []string) map[string]string {
 	out := make(map[string]string, len(text))
 	for _, kv := range text {

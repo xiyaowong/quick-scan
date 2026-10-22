@@ -44,24 +44,7 @@ func SaveSession(pages []SessionPage) {
 	if err != nil {
 		return
 	}
-	dir := SessionDir()
-	if os.MkdirAll(dir, 0o755) != nil {
-		return
-	}
-	f, err := os.CreateTemp(dir, "session-*.tmp")
-	if err != nil {
-		return
-	}
-	tmp := f.Name()
-	_, werr := f.Write(data)
-	cerr := f.Close()
-	if werr != nil || cerr != nil {
-		_ = os.Remove(tmp)
-		return
-	}
-	if os.Rename(tmp, path) != nil {
-		_ = os.Remove(tmp)
-	}
+	_ = WriteFileAtomic(path, data, 0o755)
 }
 
 // LoadSession 有残留页面就返回清单。

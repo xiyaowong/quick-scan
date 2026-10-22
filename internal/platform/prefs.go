@@ -14,9 +14,7 @@ const (
 
 // 和会话目录一样留在 %TEMP% 下：设计上不建配置目录，也不写注册表。
 // 被临时文件清理掉只是回到系统默认位置，不值得为此换个地方。
-var prefsDir = func() string {
-	return filepath.Join(os.TempDir(), "quick-scan")
-}
+var prefsDir = CacheDir
 
 type prefsData struct {
 	Version   int    `json:"version"`
