@@ -111,12 +111,12 @@ func TestLiveScan(t *testing.T) {
 	// 3) 真扫一张（A4 300dpi 彩色玻璃板）
 	intent := os.Getenv("SIMPLESCAN_INTENT")
 	if intent == "" {
-		intent = DefaultIntent
+		intent = IntentDocument
 	}
 	start := time.Now()
 	files, err := Scan(context.Background(), &dev, Options{
 		Color: ColorModeColor, DPI: 300, Size: PaperA4, Intent: intent,
-	}, t.TempDir(), nil, nil)
+	}, ScanSink{Dir: t.TempDir()})
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}

@@ -132,8 +132,14 @@ func TestParseCapabilitiesRangeAndNarrowPlaten(t *testing.T) {
 
 func TestBuildScanSettings(t *testing.T) {
 	in := &inputCaps{MaxWidth: 2550, MaxHeight: 4200}
-	got := string(buildScanSettings("2.63", "image/jpeg", "RGB24", "Platen",
-		Options{Color: ColorModeColor, DPI: 300, Size: PaperA4}, in))
+	got := string(buildScanSettings(scanSettings{
+		Version:   "2.63",
+		Format:    "image/jpeg",
+		ColorMode: "RGB24",
+		Source:    "Platen",
+		Opts:      Options{Color: ColorModeColor, DPI: 300, Size: PaperA4},
+		Caps:      in,
+	}))
 	for _, want := range []string{
 		"<pwg:Version>2.63</pwg:Version>",
 		"<pwg:Width>2480</pwg:Width>",
@@ -151,8 +157,14 @@ func TestBuildScanSettings(t *testing.T) {
 		t.Error("platen settings must not contain ADFMode")
 	}
 
-	got = string(buildScanSettings("2.63", "image/jpeg", "RGB24", "ADF",
-		Options{Color: ColorModeColor, DPI: 600, Size: PaperA4, Feeder: true, Intent: "Photo"}, in))
+	got = string(buildScanSettings(scanSettings{
+		Version:   "2.63",
+		Format:    "image/jpeg",
+		ColorMode: "RGB24",
+		Source:    "ADF",
+		Opts:      Options{Color: ColorModeColor, DPI: 600, Size: PaperA4, Feeder: true, Intent: "Photo"},
+		Caps:      in,
+	}))
 	if !strings.Contains(got, "<scan:InputSource>ADF</scan:InputSource>") ||
 		!strings.Contains(got, "<scan:ADFMode>Simplex</scan:ADFMode>") {
 		t.Errorf("ADF settings wrong\n%s", got)
@@ -178,10 +190,7 @@ func TestDisplayName(t *testing.T) {
 }
 
 func TestBrowserDevices(t *testing.T) {
-	b := &mdnsBrowser{
-		records: map[string]*serviceRecord{},
-		addrs:   map[string]string{},
-	}
+	b := newBrowser()
 	rec := b.record(`HP Laser MFP 116w (5D:DF:A6)._uscan._tcp.local.`)
 	rec.hasPTR, rec.hasSRV = true, true
 	rec.port = 80
@@ -320,7 +329,7 @@ func TestProbeAndScanPlaten(t *testing.T) {
 
 	dir := t.TempDir()
 	files, err := Scan(context.Background(), &d,
-		Options{Color: ColorModeColor, DPI: 300, Size: PaperA4, Intent: "Photo"}, dir, nil, nil)
+		Options{Color: ColorModeColor, DPI: 300, Size: PaperA4, Intent: "Photo"}, ScanSink{Dir: dir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,8 +357,10 @@ func TestScanReportsProgress(t *testing.T) {
 	}
 	var got []float64
 	files, err := Scan(context.Background(), &d,
-		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, t.TempDir(),
-		func(f float64) { got = append(got, f) }, nil)
+		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, ScanSink{
+			Dir:      t.TempDir(),
+			Progress: func(f float64) { got = append(got, f) },
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,8 +389,10 @@ func TestScanADFMultiplePages(t *testing.T) {
 	dir := t.TempDir()
 	var seen []string
 	files, err := Scan(context.Background(), &d,
-		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, dir, nil,
-		func(path string) { seen = append(seen, path) })
+		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, ScanSink{
+			Dir:    dir,
+			OnPage: func(path string) { seen = append(seen, path) },
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -433,7 +446,7 @@ func TestDPIChoicesAndIntentFallback(t *testing.T) {
 	if got := (&DeviceInfo{}).DPIs(); len(got) != 2 || got[0] != 300 || got[1] != 600 {
 		t.Errorf("fallback dpis = %v", got)
 	}
-	if got := (&DeviceInfo{}).IntentChoices(); len(got) != 1 || got[0] != DefaultIntent {
+	if got := (&DeviceInfo{}).IntentChoices(); len(got) != 1 || got[0] != IntentDocument {
 		t.Errorf("fallback intents = %v", got)
 	}
 
@@ -444,7 +457,7 @@ func TestDPIChoicesAndIntentFallback(t *testing.T) {
 	if got := pickIntent(in, "TextAndGraphic"); got != "Document" {
 		t.Errorf("pickIntent fallback = %q", got)
 	}
-	if got := pickIntent(nil, ""); got != DefaultIntent {
+	if got := pickIntent(nil, ""); got != IntentDocument {
 		t.Errorf("pickIntent default = %q", got)
 	}
 }

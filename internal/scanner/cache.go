@@ -9,19 +9,20 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"quick-scan/internal/platform"
 )
 
 const (
-	deviceCacheVersion = 1
-	deviceCacheLimit   = 32
-	deviceCacheTTL     = 30 * 24 * time.Hour
+	cacheVersion = 1
+	cacheLimit   = 32
+	cacheTTL     = 30 * 24 * time.Hour
 )
 
-var deviceCacheDir = func() string {
-	return filepath.Join(os.TempDir(), "quick-scan")
-}
+// 测试里替换成临时目录。
+var cacheDir = func() string { return platform.CacheDir() }
 
-type deviceCacheData struct {
+type cacheFile struct {
 	Version  int            `json:"version"`
 	SavedAt  int64          `json:"savedAt"` // Unix 秒；过期就整份忽略
 	Selected string         `json:"selected,omitempty"`
@@ -41,24 +42,25 @@ type cachedDevice struct {
 	Feeder      bool      `json:"feeder,omitempty"`
 }
 
-func deviceCachePath() string { return filepath.Join(deviceCacheDir(), "devices.json") }
+func cachePath() string { return filepath.Join(cacheDir(), "devices.json") }
 
+// LoadCache 返回缓存的设备名单和上次选中的键；记录过期、损坏或一个可用条目都没有时返回空。
 func LoadCache() ([]DeviceInfo, string) {
-	data, err := os.ReadFile(deviceCachePath())
+	data, err := os.ReadFile(cachePath())
 	if err != nil {
 		return nil, ""
 	}
-	var c deviceCacheData
-	if json.Unmarshal(data, &c) != nil || c.Version != deviceCacheVersion {
+	var c cacheFile
+	if json.Unmarshal(data, &c) != nil || c.Version != cacheVersion {
 		return nil, ""
 	}
-	if c.SavedAt <= 0 || time.Since(time.Unix(c.SavedAt, 0)) > deviceCacheTTL {
+	if c.SavedAt <= 0 || time.Since(time.Unix(c.SavedAt, 0)) > cacheTTL {
 		return nil, ""
 	}
-	var out []DeviceInfo
+	devs := []DeviceInfo{}
 	seen := map[string]bool{}
 	for _, cd := range c.Devices {
-		if len(out) >= deviceCacheLimit {
+		if len(devs) >= cacheLimit {
 			break
 		}
 		d, ok := cd.deviceInfo()
@@ -66,26 +68,27 @@ func LoadCache() ([]DeviceInfo, string) {
 			continue
 		}
 		seen[DeviceKey(d)] = true
-		out = append(out, d) // Online 先置 false：缓存的状态不算数，启动后重新探测
+		devs = append(devs, d) // Online 先置 false：缓存的状态不算数，启动后重新探测
 	}
-	return out, c.Selected
+	return devs, c.Selected
 }
 
 func SaveCache(devs []DeviceInfo, selected string) {
 	out := make([]cachedDevice, 0, len(devs))
 	for _, d := range devs {
-		if len(out) >= deviceCacheLimit {
+		if len(out) >= cacheLimit {
 			break
 		}
 		if cd, ok := makeCachedDevice(d); ok {
 			out = append(out, cd)
 		}
 	}
+	// 空名单不落盘：一次失败的发现不能把上次的可用设备抹掉。
 	if len(out) == 0 {
 		return
 	}
-	data, err := json.Marshal(deviceCacheData{
-		Version:  deviceCacheVersion,
+	data, err := json.Marshal(cacheFile{
+		Version:  cacheVersion,
 		SavedAt:  time.Now().Unix(),
 		Selected: selected,
 		Devices:  out,
@@ -93,24 +96,9 @@ func SaveCache(devs []DeviceInfo, selected string) {
 	if err != nil {
 		return
 	}
-	dir := deviceCacheDir()
-	if os.MkdirAll(dir, 0o700) != nil {
-		return
-	}
 	// 同目录临时文件 + rename，避免读到写了一半的 JSON。
-	f, err := os.CreateTemp(dir, "devices-*.tmp")
-	if err != nil {
+	if err := platform.WriteFileAtomic(cachePath(), data, 0o700); err != nil {
 		return
-	}
-	tmp := f.Name()
-	_, werr := f.Write(data)
-	cerr := f.Close()
-	if werr != nil || cerr != nil {
-		_ = os.Remove(tmp)
-		return
-	}
-	if os.Rename(tmp, deviceCachePath()) != nil {
-		_ = os.Remove(tmp)
 	}
 }
 

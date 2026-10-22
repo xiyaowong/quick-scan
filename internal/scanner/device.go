@@ -91,24 +91,24 @@ func (d *DeviceInfo) DefaultDPI() int {
 // IntentChoices 设备支持的用途；没上报时不提供切换（只有规范默认值）。
 func (d *DeviceInfo) IntentChoices() []string {
 	if d == nil || len(d.Intents) == 0 {
-		return []string{DefaultIntent}
+		return []string{IntentDocument}
 	}
 	return d.Intents
 }
 
 func (d *DeviceInfo) HasIntent(v string) bool {
 	if d == nil || len(d.Intents) == 0 {
-		return v == "" || strings.EqualFold(v, DefaultIntent)
+		return v == "" || strings.EqualFold(v, IntentDocument)
 	}
 	return slices.ContainsFunc(d.Intents, func(x string) bool { return strings.EqualFold(x, v) })
 }
 
 func (d *DeviceInfo) DefaultIntent() string {
 	if d == nil || len(d.Intents) == 0 {
-		return DefaultIntent
+		return IntentDocument
 	}
 	for _, x := range d.Intents {
-		if strings.EqualFold(x, DefaultIntent) {
+		if strings.EqualFold(x, IntentDocument) {
 			return x
 		}
 	}
@@ -116,8 +116,5 @@ func (d *DeviceInfo) DefaultIntent() string {
 }
 
 func absInt(v int) int {
-	if v < 0 {
-		return -v
-	}
-	return v
+	return max(v, -v)
 }

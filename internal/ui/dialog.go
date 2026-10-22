@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"quick-scan/internal/platform"
@@ -28,7 +30,7 @@ func (a *app) defaultFilename() string {
 	return "扫描_" + time.Now().Format("20060102_1504")
 }
 
-func (a *app) exportDialog(c *ui.Context, t *ui.Theme) {
+func (a *app) exportDialog(c *ui.Context) {
 	open := a.dlg == DlgExport
 	ui.Modal(c, &open, func() {
 		card := ui.Column(c).Width(452).Background(colPanel).Border(1, colLine).
@@ -55,11 +57,11 @@ func (a *app) exportDialog(c *ui.Context, t *ui.Theme) {
 			ui.Column(c).Padding(18, 22, 0, 22).Gap(16).Children(func() {
 				switch a.exportPhase {
 				case PhaseWorking:
-					a.exportProgressView(c, t)
+					a.exportProgressView(c)
 				case PhaseDone:
-					a.exportDoneView(c, t)
+					a.exportDoneView(c)
 				default:
-					a.exportFormView(c, t)
+					a.exportFormView(c)
 				}
 			})
 		})
@@ -69,7 +71,7 @@ func (a *app) exportDialog(c *ui.Context, t *ui.Theme) {
 	}
 }
 
-func (a *app) exportProgressView(c *ui.Context, t *ui.Theme) {
+func (a *app) exportProgressView(c *ui.Context) {
 	frac := 0.0
 	if a.exportTotalN > 0 {
 		frac = float64(a.exportDoneN) / float64(a.exportTotalN)
@@ -81,7 +83,7 @@ func (a *app) exportProgressView(c *ui.Context, t *ui.Theme) {
 	})
 }
 
-func (a *app) exportFormView(c *ui.Context, t *ui.Theme) {
+func (a *app) exportFormView(c *ui.Context) {
 	sectionLabel(c, "格式", false)
 	cur := 0
 	if a.exportFmt == ExportJPG {
@@ -132,7 +134,7 @@ func (a *app) exportFormView(c *ui.Context, t *ui.Theme) {
 	})
 }
 
-func (a *app) exportDoneView(c *ui.Context, t *ui.Theme) {
+func (a *app) exportDoneView(c *ui.Context) {
 	successPanel(c, "已导出", fmt.Sprintf("共 %d 页", a.exportDone.PageCount))
 	if a.exportDone.Display != "" {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Padding(10, 12, 10, 12).
@@ -163,7 +165,7 @@ func (a *app) exportDoneView(c *ui.Context, t *ui.Theme) {
 
 // recoverDialog 上次异常退出时，临时目录里还留着扫描页。
 // 必须让用户明确选恢复或丢弃，点窗外/Esc 都不关：误关一下数据就没了。
-func (a *app) recoverDialog(c *ui.Context, t *ui.Theme) {
+func (a *app) recoverDialog(c *ui.Context) {
 	n := len(a.recoverPages)
 	open := true
 	ui.Modal(c, &open, func() {
@@ -187,7 +189,7 @@ func (a *app) recoverDialog(c *ui.Context, t *ui.Theme) {
 					a.recoverPages = nil
 					a.dlg = DlgNone
 				}
-				if styledButton(c, "恢复 "+itoa(n)+" 页", nil, tonePrimary, false).Height(38).Padding(0, 20, 0, 20).Clicked() {
+				if styledButton(c, "恢复 "+strconv.Itoa(n)+" 页", nil, tonePrimary, false).Height(38).Padding(0, 20, 0, 20).Clicked() {
 					a.restoreSession()
 				}
 			})
@@ -195,77 +197,112 @@ func (a *app) recoverDialog(c *ui.Context, t *ui.Theme) {
 	})
 }
 
+// runExport 在后台串起三件事：选落点、导出、把结果写回界面。
+// 三步之间都要 Win.Update 回主线程，所以整段只在这一条协程里跑。
 func (a *app) runExport() {
 	if a.exportPicking {
 		return
 	}
 	a.exportPicking = true
+
 	name := a.exportFilename
 	if name == "" {
 		name = a.defaultFilename()
 	}
-	fmt_ := a.exportFmt
-	startDir := a.lastExportDir
+	job := exportJob{
+		name:     name,
+		format:   a.exportFmt,
+		startDir: a.lastExportDir,
+		pages:    a.pageExports(),
+	}
+
+	go func() {
+		path, ok := a.pickExportPath(job)
+		if !ok {
+			return // 用户取消
+		}
+		a.writeExport(job, path)
+	}()
+}
+
+// exportJob 是一次导出的全部输入；goroutine 只读它，不再碰 a 的其它字段。
+type exportJob struct {
+	name     string
+	format   ExportFormat
+	startDir string
+	pages    []scanner.ExportPage
+}
+
+func (a *app) pageExports() []scanner.ExportPage {
 	targets := a.exportTargets()
 	pages := make([]scanner.ExportPage, len(targets))
 	for i, p := range targets {
 		pages[i] = scanner.ExportPage{Path: p.FullPath, Rot: p.Rot}
 	}
+	return pages
+}
 
-	go func() {
-		ext, filter := "pdf", "PDF 文件"
-		if fmt_ == ExportJPG {
-			ext, filter = "jpg", "JPG 图片"
-		}
-		// 只有文件名：没有记录时由系统决定落点，不能替用户编一个可能不存在的目录。
-		def := name + "." + ext
-		// 记录可能是上次关机前拔掉的网络盘，所以在协程里确认，别在主线程上等。
-		if startDir != "" && platform.ExportDirUsable(startDir) {
-			def = filepath.Join(startDir, def)
-		}
-		path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
-			Parent:      Win,
-			Title:       "导出",
-			DefaultPath: def,
-			Filters:     []mygo.FileFilter{{Name: filter, Extensions: []string{ext}}},
-		})
-		Win.Update(func() { a.exportPicking = false })
-		if err != nil || path == "" {
-			return // 用户取消
-		}
-		dir := filepath.Dir(path)
-		base := filepath.Base(path)
-		base = base[:len(base)-len(filepath.Ext(base))] // 去扩展名
+// pickExportPath 弹出系统的保存对话框。返回 false 表示用户取消。
+func (a *app) pickExportPath(job exportJob) (string, bool) {
+	ext, filter := "pdf", "PDF 文件"
+	if job.format == ExportJPG {
+		ext, filter = "jpg", "JPG 图片"
+	}
+	// 只有文件名：没有记录时由系统决定落点，不能替用户编一个可能不存在的目录。
+	def := job.name + "." + ext
+	// 记录可能是上次关机前拔掉的网络盘，所以在协程里确认，别在主线程上等。
+	if job.startDir != "" && platform.ExportDirUsable(job.startDir) {
+		def = filepath.Join(job.startDir, def)
+	}
+	path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
+		Parent:      Win,
+		Title:       "导出",
+		DefaultPath: def,
+		Filters:     []mygo.FileFilter{{Name: filter, Extensions: []string{ext}}},
+	})
+	Win.Update(func() { a.exportPicking = false })
+	return path, err == nil && path != ""
+}
 
-		Win.Update(func() {
-			a.exportPhase = PhaseWorking
-			a.exportDoneN = 0
-			a.exportTotalN = len(pages)
-		})
-		out, expErr := scanner.ExportPages(pages, fmt_ == ExportPDF, dir, base, func(done, total int) {
+// writeExport 真正写文件，并把进度和结果送回界面。
+func (a *app) writeExport(job exportJob, path string) {
+	dir := filepath.Dir(path)
+	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+
+	Win.Update(func() {
+		a.exportPhase = PhaseWorking
+		a.exportDoneN = 0
+		a.exportTotalN = len(job.pages)
+	})
+	out, err := scanner.ExportPages(scanner.ExportOptions{
+		Pages: job.pages,
+		Dir:   dir,
+		Name:  base,
+		AsPDF: job.format == ExportPDF,
+		OnProgress: func(done, total int) {
 			Win.Update(func() {
 				a.exportDoneN = done
 				a.exportTotalN = total
 			})
-		})
-		Win.Update(func() {
-			if expErr != nil {
-				a.exportPhase = PhaseIdle
-				a.scanStatus = "导出失败：" + expErr.Error()
-				return
-			}
-			// 导出成功才记住：用户取消或失败时选中的目录不算「上次保存的位置」。
-			a.lastExportDir = dir
-			platform.SaveExportDir(dir)
-			a.exportPhase = PhaseDone
-			a.exportDone = ExportDone{
-				Display:   out.Display,
-				Dir:       out.Dir,
-				File:      out.File,
-				PageCount: out.PageCount,
-			}
-		})
-	}()
+		},
+	})
+	Win.Update(func() {
+		if err != nil {
+			a.exportPhase = PhaseIdle
+			a.scanStatus = "导出失败：" + err.Error()
+			return
+		}
+		// 导出成功才记住：用户取消或失败时选中的目录不算「上次保存的位置」。
+		a.lastExportDir = dir
+		platform.SaveExportDir(dir)
+		a.exportPhase = PhaseDone
+		a.exportDone = ExportDone{
+			Display:   out.Display,
+			Dir:       out.Dir,
+			File:      out.File,
+			PageCount: out.PageCount,
+		}
+	})
 }
 
 func (a *app) exportTargets() []Page {

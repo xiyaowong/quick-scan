@@ -22,24 +22,41 @@ type ExportPage struct {
 
 type ProgressFunc func(done, total int)
 
-func ExportPages(pages []ExportPage, asPDF bool, dir, name string, prog ProgressFunc) (*ExportOutcome, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+// ExportOptions 一次导出的全部输入。逐页导出和合成 PDF 只差 AsPDF，
+// 其余字段摆在一起才看得出「同一批页面、同一个落点」。
+type ExportOptions struct {
+	Pages []ExportPage
+	Dir   string // 目标目录
+	Name  string // 不含扩展名的文件名
+	AsPDF bool
+	// OnProgress 在导出 goroutine 里逐页回调。
+	OnProgress ProgressFunc
+}
+
+func ExportPages(o ExportOptions) (*ExportOutcome, error) {
+	if err := os.MkdirAll(o.Dir, 0o755); err != nil {
 		return nil, fmt.Errorf("建目录失败: %w", err)
 	}
+	prog := o.OnProgress
 	if prog == nil {
 		prog = func(int, int) {}
 	}
-	if asPDF {
-		path := uniquePath(dir, name, "pdf")
-		if err := exportPDF(pages, path, prog); err != nil {
+	if o.AsPDF {
+		path := uniquePath(o.Dir, o.Name, "pdf")
+		if err := exportPDF(o.Pages, path, prog); err != nil {
 			return nil, err
 		}
-		return &ExportOutcome{Display: path, Dir: filepath.Dir(path), File: path, PageCount: len(pages)}, nil
+		return &ExportOutcome{Display: path, Dir: filepath.Dir(path), File: path, PageCount: len(o.Pages)}, nil
 	}
-	written, err := exportJPGs(pages, dir, name, prog)
+	written, err := exportJPGs(o.Pages, o.Dir, o.Name, prog)
 	if err != nil {
 		return nil, err
 	}
+	return jpgOutcome(o.Dir, written), nil
+}
+
+// jpgOutcome 描述多文件导出的落点：文件夹里可能只多了一张，界面上要说得清。
+func jpgOutcome(dir string, written []string) *ExportOutcome {
 	n := len(written)
 	var display string
 	if n == 1 {
@@ -52,7 +69,7 @@ func ExportPages(pages []ExportPage, asPDF bool, dir, name string, prog Progress
 	if n == 1 {
 		file = written[0]
 	}
-	return &ExportOutcome{Display: display, Dir: dir, File: file, PageCount: n}, nil
+	return &ExportOutcome{Display: display, Dir: dir, File: file, PageCount: n}
 }
 
 func uniquePath(dir, name, ext string) string {

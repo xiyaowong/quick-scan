@@ -11,9 +11,9 @@ import (
 func withTempCache(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	old := deviceCacheDir
-	deviceCacheDir = func() string { return dir }
-	t.Cleanup(func() { deviceCacheDir = old })
+	old := cacheDir
+	cacheDir = func() string { return dir }
+	t.Cleanup(func() { cacheDir = old })
 	return dir
 }
 
@@ -73,9 +73,9 @@ func TestDeviceCacheRejectsBadOrStale(t *testing.T) {
 		t.Error("wrong version accepted")
 	}
 
-	old := time.Now().Add(-deviceCacheTTL - time.Hour).Unix()
-	data, _ := json.Marshal(deviceCacheData{
-		Version: deviceCacheVersion,
+	old := time.Now().Add(-cacheTTL - time.Hour).Unix()
+	data, _ := json.Marshal(cacheFile{
+		Version: cacheVersion,
 		SavedAt: old,
 		Devices: []cachedDevice{{IP: "192.168.1.9", Port: 80, Path: "eSCL"}},
 	})
@@ -84,8 +84,8 @@ func TestDeviceCacheRejectsBadOrStale(t *testing.T) {
 		t.Error("expired cache accepted")
 	}
 
-	data, _ = json.Marshal(deviceCacheData{
-		Version: deviceCacheVersion,
+	data, _ = json.Marshal(cacheFile{
+		Version: cacheVersion,
 		SavedAt: time.Now().Unix(),
 		Devices: []cachedDevice{
 			{IP: "not-an-ip", Port: 80, Path: "eSCL"},

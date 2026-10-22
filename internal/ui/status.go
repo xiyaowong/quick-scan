@@ -55,25 +55,7 @@ func (a *app) statusLoop() {
 
 // pollStatusOnce 在轮询协程里跑：状态归主线程所有，网络请求不能碰它。
 func (a *app) pollStatusOnce() {
-	got := make(chan statusTarget, 1)
-	Win.Update(func() {
-		d := a.current()
-		if d == nil || a.devState != DevOnline {
-			got <- statusTarget{}
-			return
-		}
-		// 只带端点：跨线程传的指针不能指向主线程还会改的结构。
-		got <- statusTarget{idx: d.Idx, dev: &scanner.DeviceInfo{
-			Idx: d.Idx, Name: d.Name, IP: d.IP, Port: d.Port, Path: d.Path,
-		}}
-	})
-
-	var tg statusTarget
-	select {
-	case tg = <-got:
-	case <-time.After(statusPollInterval): // 主线程正忙，跳过本轮
-		return
-	}
+	tg := a.snapshotStatusTarget()
 	if tg.dev == nil {
 		return
 	}
@@ -92,6 +74,28 @@ func (a *app) pollStatusOnce() {
 		}
 		a.devStatus, a.devStatusIdx = st, tg.idx
 	})
+}
+
+// snapshotStatusTarget 回主线程拷一份端点副本；没有可查的设备时返回零值。
+func (a *app) snapshotStatusTarget() statusTarget {
+	got := make(chan statusTarget, 1)
+	Win.Update(func() {
+		d := a.current()
+		if d == nil || a.devState != DevOnline {
+			got <- statusTarget{}
+			return
+		}
+		// 只带端点：跨线程传的指针不能指向主线程还会改的结构。
+		got <- statusTarget{idx: d.Idx, dev: &scanner.DeviceInfo{
+			Idx: d.Idx, Name: d.Name, IP: d.IP, Port: d.Port, Path: d.Path,
+		}}
+	})
+	select {
+	case tg := <-got:
+		return tg
+	case <-time.After(statusPollInterval): // 主线程正忙，跳过本轮
+		return statusTarget{}
+	}
 }
 
 func (a *app) statusOf(d *scanner.DeviceInfo) scanner.Status {
@@ -116,13 +120,13 @@ func (a *app) scanIssue() scanIssue {
 	st := a.statusOf(a.current())
 	switch {
 	case st.Stopped():
-		return scanIssue{"打印机停了，看看是不是卡纸或盖子没关好。", true}
+		return scanIssue{Text: "打印机停了，看看是不是卡纸或盖子没关好。", Danger: true}
 	case a.feeder && st.ADFJam():
-		return scanIssue{"进纸口卡纸了，把纸取出来再扫描。", true}
+		return scanIssue{Text: "进纸口卡纸了，把纸取出来再扫描。", Danger: true}
 	case a.feeder && st.ADFDoorOpen():
-		return scanIssue{"进纸口的盖子没关好，盖好再扫描。", true}
+		return scanIssue{Text: "进纸口的盖子没关好，盖好再扫描。", Danger: true}
 	case st.Busy():
-		return scanIssue{"打印机正在忙，等它扫完再点扫描。", false}
+		return scanIssue{Text: "打印机正在忙，等它扫完再点扫描。"}
 	}
 	return scanIssue{}
 }
