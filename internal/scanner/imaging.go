@@ -3,6 +3,7 @@ package scanner
 import (
 	"bytes"
 	"image"
+	"image/color"
 	"image/jpeg"
 	"image/png"
 	"io"
@@ -133,4 +134,76 @@ func encodePNG(src *image.RGBA) ([]byte, error) {
 	var buf bytes.Buffer
 	err := png.Encode(&buf, src)
 	return buf.Bytes(), err
+}
+
+// 解码 → Otsu 全局阈值 → 纯黑白 PNG。
+// 灰度扫描件是双峰的（纸白、字黑），全局阈值就够了；局部自适应会在纸面噪点上
+// 长出黑斑，反而比设备自己的黑白化更脏。
+func bilevelPNG(jpg []byte) ([]byte, error) {
+	img, _, err := image.Decode(bytes.NewReader(jpg))
+	if err != nil {
+		return nil, err
+	}
+	src := toRGBA(img)
+	gray := toGray(src)
+	threshold := otsuThreshold(gray)
+	b := src.Bounds()
+	// 2 色调色板而不是 8 位灰度：同样的像素，PNG 小 ~40%，编码也快 ~40%。
+	out := image.NewPaletted(image.Rect(0, 0, b.Dx(), b.Dy()), color.Palette{color.Black, color.White})
+	for i, v := range gray {
+		if v > threshold {
+			out.Pix[i] = 1
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, out); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// Rec.601 亮度：扫描件多是灰底黑字，人眼权重最接近「看起来黑不黑」。
+func toGray(src *image.RGBA) []uint8 {
+	w, h := src.Bounds().Dx(), src.Bounds().Dy()
+	out := make([]uint8, w*h)
+	for y := range h {
+		for x := range w {
+			i := y*src.Stride + x*4
+			out[y*w+x] = uint8((299*uint32(src.Pix[i]) + 587*uint32(src.Pix[i+1]) + 114*uint32(src.Pix[i+2])) / 1000)
+		}
+	}
+	return out
+}
+
+// Otsu：选让类间方差最大的灰度级。
+func otsuThreshold(gray []uint8) uint8 {
+	var hist [256]uint32
+	for _, v := range gray {
+		hist[v]++
+	}
+	total := uint64(len(gray))
+	var sumAll uint64
+	for v, n := range hist {
+		sumAll += uint64(v) * uint64(n)
+	}
+	var sumB, weightB uint64
+	best, bestVar := 0, -1.0
+	for t := 0; t < 256; t++ {
+		weightB += uint64(hist[t])
+		if weightB == 0 {
+			continue
+		}
+		weightF := total - weightB
+		if weightF == 0 {
+			break
+		}
+		sumB += uint64(t) * uint64(hist[t])
+		meanB := float64(sumB) / float64(weightB)
+		meanF := float64(sumAll-sumB) / float64(weightF)
+		v := float64(weightB) * float64(weightF) * (meanB - meanF) * (meanB - meanF)
+		if v > bestVar {
+			bestVar, best = v, t
+		}
+	}
+	return uint8(best)
 }

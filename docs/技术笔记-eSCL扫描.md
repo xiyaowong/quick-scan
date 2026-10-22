@@ -81,11 +81,27 @@ ScanSettings：
 - 纸张尺寸按物理尺寸 × dpi 换算成像素，超过 `MaxWidth/MaxHeight` 时夹到边界。
 - 优先请求 `image/jpeg`，其次 `image/png`；只报 PDF 的设备直接报错。
 - 色彩下发设备上报的 ColorMode，缺省用规范值。
+  **例外：黑白一律不下发 `BlackAndWhite1`**。
+  调试时遇到的情况是：设备能力里报了 `BlackAndWhite1`，但配 `image/jpeg` 时任务直接
+  `Aborted / JobCompletedWithErrors`，`ImagesCompleted=0`，`NextDocument` 一直回 410；
+  POST 仍然是 201，所以「任务建好了」不代表参数被接受。别家设备未必有这个问题，
+  但既然上报支持也不等于能扫，就不逐个设备去赌。
+- 黑白统一向设备要 `Grayscale8`，本地 Otsu 二值化后存 **2 色调色板 PNG**。
+  这是与设备无关的做法：请求的是最保守的灰度，阈值化只依赖像素本身，
+  不依赖各家对 `BlackAndWhite1` 的实现。
+  - 不走「先试原生黑白、失败再退回灰度」：失败后设备要一段时间才肯接下一个任务
+    （实测约 1.7 秒，且可能更长），用户会看到一次无谓的等待和一次失败。
+  - 不走「要 PDF 再自己转图」：黑白 PDF 里嵌的不一定是 1 位图，调试时见到的是
+    8 位 RGB JPEG，体积和耗时与灰度路线一样；同一请求还可能给出不同的内部编码，
+    再套一个 PDF 容器解析器（容器 + CCITT + DCT 三条分支）换不来任何好处。
+  - 2 色调色板比 8 位灰度 PNG 小约 40%、编码快约 40%，像素完全一致。
 - 玻璃板 `InputSource=Platen`；进纸口 `InputSource=ADF` + `ADFMode=Simplex`。
 - Intent 不支持时退回 `Document`，再不行用设备上报的第一个。
 
 ## 落盘与错误
 
-- 返回的 JPEG/PNG 原样写到 `%TEMP%\quick-scan_<pid>\pages\`。
+- 返回的 JPEG/PNG 原样写到 `%TEMP%\quick-scan_<pid>\pages\`；黑白页是二值化后的 PNG。
+- 文件的扩展名按响应头 `Content-Type` 定，不按请求的格式：设备常无视请求自己换一种
+  （要 `image/png` 也可能回 `application/pdf`），扩名出错文件就打不开。
 - 探测失败 → 设备标红并垫底，状态栏给底层原因。
 - 扫描失败 → 扫描按钮旁显示中文原因，不出现协议术语。
