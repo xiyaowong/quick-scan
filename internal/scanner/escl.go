@@ -466,10 +466,11 @@ func Scan(ctx context.Context, d *DeviceInfo, opts Options, sink ScanSink) (_ []
 		return nil, errors.New("这台设备没有进纸口")
 	}
 
+	colorMode, bilevel := scanColor(in, opts.Color)
 	set := scanSettings{
 		Version:   caps.Version,
 		Format:    pickFormat(append(append([]string{}, in.Formats...), caps.Formats...)),
-		ColorMode: pickColorMode(in, opts.Color),
+		ColorMode: colorMode,
 		Source:    source,
 		Opts:      opts,
 		Caps:      in,
@@ -502,7 +503,6 @@ func Scan(ctx context.Context, d *DeviceInfo, opts Options, sink ScanSink) (_ []
 		span = 0.9
 	}
 
-	ext := pageExt(set.Format)
 	var files []string
 	for i := 1; ; i++ {
 		data, ct, err := nextDocument(ctx, jobURL, expect, func(f float64) {
@@ -520,6 +520,22 @@ func Scan(ctx context.Context, d *DeviceInfo, opts Options, sink ScanSink) (_ []
 		}
 		if strings.Contains(ct, "pdf") {
 			return nil, errors.New("设备返回了 PDF 格式，无法在界面里显示")
+		}
+		// 设备常无视请求的格式自己换一个，扩名只能按实际 Content-Type 定，
+		// 否则文件双击打不开（内容是对的，扩名是错的）。
+		ext := pageExt(set.Format)
+		switch {
+		case strings.Contains(ct, "png"):
+			ext = ".png"
+		case strings.Contains(ct, "jpeg"), strings.Contains(ct, "jpg"):
+			ext = ".jpg"
+		}
+		if bilevel {
+			data, err = bilevelPNG(data)
+			if err != nil {
+				return nil, fmt.Errorf("黑白转换失败：%w", err)
+			}
+			ext = ".png" // 二值图存 PNG：JPEG 的 DCT 会把纯黑白重新变灰
 		}
 		path := filepath.Join(sink.Dir, fmt.Sprintf("page_%d_%d%s", time.Now().UnixMilli(), i, ext))
 		if err := os.WriteFile(path, data, 0o644); err != nil {
@@ -556,10 +572,9 @@ func pageEstimate(opts Options) time.Duration {
 	px := float64(u[0]*u[1]) * scale * scale
 	rate := 1.6e6 // 像素/秒
 	switch opts.Color {
-	case ColorModeGray:
+	case ColorModeGray, ColorModeBW:
+		// 黑白在真机上走的是灰度通道（见 scanColor），按黑白的 8e6 估会快得离谱。
 		rate = 3.2e6
-	case ColorModeBW:
-		rate = 8e6
 	}
 	// 再快也得留一秒，否则进度条一眨眼就到头，看不出在扫。
 	return max(time.Second, time.Duration(px/rate*float64(time.Second)))
@@ -603,6 +618,25 @@ func pickColorMode(in *inputCaps, key string) string {
 		}
 	}
 	return esclColorName(key)
+}
+
+// 黑白用灰度向设备取图，本地再二值化：实测 HP 116w 上报支持 BlackAndWhite1，
+// 但配 image/jpeg 时任务直接 Aborted（ImagesCompleted=0），只肯把黑白包进 PDF。
+// 灰度 JPEG 在各家设备上都稳，阈值化又不依赖设备实现。
+// 设备只能灰度时同样走这条：界面选的是「黑白」，输出灰度就是骗人。
+// 能力没上报（in.Colors 为空）也按这条走：灰度是最保守的请求。
+func scanColor(in *inputCaps, key string) (mode string, bilevel bool) {
+	if key != ColorModeBW {
+		return pickColorMode(in, key), false
+	}
+	if in == nil || len(in.Colors) == 0 {
+		return pickColorMode(in, ColorModeGray), true
+	}
+	// in.Colors 已经过 orderColors 归一，可直接查。
+	if slices.Contains(in.Colors, ColorModeGray) {
+		return pickColorMode(in, ColorModeGray), true
+	}
+	return pickColorMode(in, ColorModeBW), false // 只报了黑白：没有可二值化的来源
 }
 
 // 精确匹配 → Document → 设备第一项。

@@ -81,11 +81,17 @@ ScanSettings：
 - 纸张尺寸按物理尺寸 × dpi 换算成像素，超过 `MaxWidth/MaxHeight` 时夹到边界。
 - 优先请求 `image/jpeg`，其次 `image/png`；只报 PDF 的设备直接报错。
 - 色彩下发设备上报的 ColorMode，缺省用规范值。
+  **例外：黑白不下发 `BlackAndWhite1`**。实测 HP 116w 在能力里报了它，但配
+  `image/jpeg` 时任务直接 `Aborted / JobCompletedWithErrors`，`ImagesCompleted=0`，
+  `NextDocument` 一直回 410（只肯把黑白包进 PDF）。所以黑白改成向设备要灰度，
+  本地按 Otsu 阈值二值化后存 PNG（JPEG 会把纯黑白重新变灰）。
 - 玻璃板 `InputSource=Platen`；进纸口 `InputSource=ADF` + `ADFMode=Simplex`。
 - Intent 不支持时退回 `Document`，再不行用设备上报的第一个。
 
 ## 落盘与错误
 
-- 返回的 JPEG/PNG 原样写到 `%TEMP%\quick-scan_<pid>\pages\`。
+- 返回的 JPEG/PNG 原样写到 `%TEMP%\quick-scan_<pid>\pages\`；黑白页是二值化后的 PNG。
+- 文件的扩展名按响应头 `Content-Type` 定，不按请求的格式：设备常无视请求自己换一种
+  （要 `image/png` 也可能回 `application/pdf`），扩名出错文件就打不开。
 - 探测失败 → 设备标红并垫底，状态栏给底层原因。
 - 扫描失败 → 扫描按钮旁显示中文原因，不出现协议术语。
