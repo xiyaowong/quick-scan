@@ -444,7 +444,7 @@ type ScanSink struct {
 	OnPage func(path string)
 }
 
-func Scan(ctx context.Context, d *DeviceInfo, opts Options, sink ScanSink) ([]string, error) {
+func Scan(ctx context.Context, d *DeviceInfo, opts Options, sink ScanSink) (_ []string, err error) {
 	report := func(f float64) {
 		if sink.Progress != nil {
 			sink.Progress(f)
@@ -486,7 +486,12 @@ func Scan(ctx context.Context, d *DeviceInfo, opts Options, sink ScanSink) ([]st
 	if err != nil {
 		return nil, err
 	}
-	defer cancelScanJob(jobURL)
+	// 只在半路失败时才删任务。正常扫完由设备自己收尾，删了反而被记成「用户取消」。
+	defer func() {
+		if err != nil {
+			cancelScanJob(jobURL)
+		}
+	}()
 	report(0.02)
 
 	expect := pageEstimate(opts)

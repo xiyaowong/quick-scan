@@ -248,14 +248,19 @@ func TestPickFormat(t *testing.T) {
 type fakeScanner struct {
 	srv        *httptest.Server
 	pages      int
+	failAt     int // 第几张之后开始回 500；0 = 不失败
 	nextCalls  int32
 	deleted    int32
 	lastCreate string
 }
 
 func newFakeScanner(t *testing.T, pages int) *fakeScanner {
+	return newFakeScannerN(t, pages, 0)
+}
+
+func newFakeScannerN(t *testing.T, pages, failAt int) *fakeScanner {
 	t.Helper()
-	fs := &fakeScanner{pages: pages}
+	fs := &fakeScanner{pages: pages, failAt: failAt}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/eSCL/ScannerCapabilities", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/xml")
@@ -274,6 +279,10 @@ func newFakeScanner(t *testing.T, pages int) *fakeScanner {
 	})
 	mux.HandleFunc("/eSCL/ScanJobs/42/NextDocument", func(w http.ResponseWriter, r *http.Request) {
 		n := int(atomic.AddInt32(&fs.nextCalls, 1))
+		if fs.failAt > 0 && n > fs.failAt {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
 		if n > fs.pages {
 			http.Error(w, "no more", http.StatusNotFound)
 			return
@@ -343,8 +352,26 @@ func TestProbeAndScanPlaten(t *testing.T) {
 		!strings.Contains(fs.lastCreate, "<scan:Intent>Photo</scan:Intent>") {
 		t.Errorf("settings posted = %s", fs.lastCreate)
 	}
-	if atomic.LoadInt32(&fs.deleted) != 1 {
-		t.Error("scan job was not deleted")
+	// 扫完不删任务：DELETE 会让设备把这一单记成「用户取消」。
+	if got := atomic.LoadInt32(&fs.deleted); got != 0 {
+		t.Errorf("扫完不该删任务，DELETE 调了 %d 次", got)
+	}
+}
+
+// 半路失败才是真的取消，这时必须删，否则设备一直占着。
+func TestScanAbortedDeletesJob(t *testing.T) {
+	fs := newFakeScannerN(t, 3, 1)
+	d := fs.device()
+	if err := Probe(context.Background(), &d); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Scan(context.Background(), &d,
+		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, ScanSink{Dir: t.TempDir()})
+	if err == nil {
+		t.Fatal("设备报 500 时扫描应该失败")
+	}
+	if got := atomic.LoadInt32(&fs.deleted); got != 1 {
+		t.Errorf("失败后应删任务一次，实际 %d 次", got)
 	}
 }
 
