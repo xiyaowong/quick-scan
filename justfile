@@ -44,12 +44,15 @@ icon:
 #   子窗口；mygo 自定义标题栏的按钮/顶边正是这种子窗口，于是启动报
 #   "cannot create the window controls of a window with a hidden title bar"，贴边缩放和
 #   贴靠布局也一起失效。Windows 8（6.2）起才支持，这里取 10.0 与内部链接器对齐。
+# cgo：CC 会原样传给 clang 侧的驱动，路径带空格时必须自带引号，
+# 否则 cgo 按空格切词，报 "C:\Program" 找不到（CI 的 clang 在 Program Files 下）。
 ui: icon ocr
     $env:CGO_ENABLED = '1'; \
     $env:GOARCH = 'amd64'; \
     $env:CGO_LDFLAGS = '-Xlinker /subsystem:console,10.0'; \
     $ver = (((Select-String -Path app.rc -Pattern 'PRODUCTVERSION\s+([\d,]+)').Matches[0].Groups[1].Value -split ',')[0..2] -join '.'); \
     if (-not $env:CC) { $env:CC = if (Get-Command clang -ErrorAction SilentlyContinue) { (Get-Command clang).Source } else { 'D:\Scoop\apps\llvm\current\bin\clang.exe' } }; \
+    if ($env:CC -match '\s' -and $env:CC -notmatch '^"') { $env:CC = '"' + $env:CC + '"' }; \
     go build -trimpath -tags mygo_noinspector -ldflags "-s -w -X quick-scan/internal/update.Version=$ver" -o quick-scan.exe ./cmd/quick-scan; \
     if ($LASTEXITCODE -ne 0) { throw '主程序编译失败' }; \
     Write-Host "[ui] quick-scan.exe 完成（$ver）"

@@ -54,9 +54,9 @@ func (a *app) startUpdateCheck() {
 	}()
 }
 
-// applyPendingUpdate 静默装好已下载的新版本。先把自己改名让开位置，
-// 安装包再把它写到原处：本进程继续用旧映像跑完这次，下次启动就是新版。
-// 所以用户不用等、不用重启，也看不到任何东西。装不上就改回原名。
+// applyPendingUpdate 静默装好已下载的新版本，装回用户当初选的那个目录。
+// 先把自己改名让开位置，安装包再写到原处：本进程继续用旧映像跑完这次，
+// 下次启动就是新版，用户不用等也不用重启。任何一步失败都还原，程序照常能用。
 func applyPendingUpdate() {
 	r := update.LoadPending()
 	if r == nil {
@@ -71,7 +71,7 @@ func applyPendingUpdate() {
 	if err != nil {
 		return // 让不开位置：留到下次，不打扰用户
 	}
-	if err := r.Run(path); err != nil {
+	if err := r.Run(path, update.InstallDir()); err != nil {
 		update.Restore(exe, old)
 		return
 	}

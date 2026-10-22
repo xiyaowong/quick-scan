@@ -189,8 +189,8 @@ func File(version string) (string, error) {
 	return filepath.Join(dir, "update", "quick-scan-"+version+assetSuffix), nil
 }
 
-// Installable 当前这个副本能不能自动更新：必须是安装版（安装目录里登记的
-// 就是正在运行的程序），并且安装目录可写。免安装版和仓库里直接跑的都跳过。
+// Installable 当前这个副本能不能自动更新：必须是安装版（卸载项登记的目录里
+// 运行的程序），并且安装目录可写。免安装版和仓库里直接跑的都跳过。
 func Installable() bool {
 	exe, err := os.Executable()
 	if err != nil {
@@ -200,8 +200,8 @@ func Installable() bool {
 	if strings.Contains(filepath.Base(exe), ".old-") {
 		return false
 	}
-	want := installedDir()
-	if want == "" || !strings.EqualFold(filepath.Clean(want), filepath.Clean(filepath.Dir(exe))) {
+	dir := installedDir()
+	if dir == "" || !strings.EqualFold(filepath.Clean(dir), filepath.Clean(filepath.Dir(exe))) {
 		return false
 	}
 	f, err := os.CreateTemp(filepath.Dir(exe), ".quick-scan-probe-*")
@@ -214,38 +214,40 @@ func Installable() bool {
 	return true
 }
 
-// Run 静默安装：安装程序不带任何界面，装完即止。
+// InstallDir 实际安装目录：用户当初可能改过，安装包登记在卸载项里。
+// 升级必须装回这里，不能用默认路径。
+func InstallDir() string { return installedDir() }
+
+// Run 静默安装到 dir：不带任何界面，装完即止。
 // 调用前必须先把正在运行的 exe 让开（Windows 不让覆盖使用中的文件）。
-func (r *Release) Run(setup string) error {
+func (r *Release) Run(setup, dir string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), installTimeout)
 	defer cancel()
-	return runSetup(ctx, setup)
+	return runSetup(ctx, setup, dir)
 }
 
-// StepAside 把正在运行的程序改名，给安装包让出位置。返回原名和现在的位置。
-// 改名之后一直到装完，安装目录里没有 quick-scan.exe：用户这时点桌面图标会
-// 提示找不到文件。安装只持续几秒，且发生在启动的最初几帧，故接受。
-func StepAside() (string, string, error) {
-	exe, err := os.Executable()
+// StepAside 把正在运行的 exe 改名让出位置：Windows 不让覆盖使用中的文件。
+// 返回原名和让位后的名字，装不上时用 Restore 改回来。
+func StepAside() (exe, old string, err error) {
+	exe, err = os.Executable()
 	if err != nil {
 		return "", "", err
 	}
-	old := exe + fmt.Sprintf(".old-%d", os.Getpid())
+	old = exe + fmt.Sprintf(".old-%d", os.Getpid())
 	if err := os.Rename(exe, old); err != nil {
 		return "", "", err
 	}
 	return exe, old, nil
 }
 
-// Restore 安装没成功时把程序改回原来的名字。
+// Restore 安装没成功时把程序改回原来的名字，并删掉装了一半的文件。
 func Restore(exe, old string) {
-	if _, err := os.Stat(exe); err == nil {
-		_ = os.Remove(exe) // 装了一半留下的
-	}
+	_ = os.Remove(exe)
 	_ = os.Rename(old, exe)
 }
 
 // CleanLeftovers 清掉上次让位留下的旧 exe 和没下完的 .part。
+// 目录取安装位置：程序自己所在目录，免安装版也同样适用。
 func CleanLeftovers() {
 	if dir, err := Dir(); err == nil {
 		gone, _ := filepath.Glob(filepath.Join(dir, "*.old-*"))
