@@ -48,10 +48,11 @@ ui: icon ocr
     $env:CGO_ENABLED = '1'; \
     $env:GOARCH = 'amd64'; \
     $env:CGO_LDFLAGS = '-Xlinker /subsystem:console,10.0'; \
+    $ver = (((Select-String -Path app.rc -Pattern 'PRODUCTVERSION\s+([\d,]+)').Matches[0].Groups[1].Value -split ',')[0..2] -join '.'); \
     if (-not $env:CC) { $env:CC = if (Get-Command clang -ErrorAction SilentlyContinue) { (Get-Command clang).Source } else { 'D:\Scoop\apps\llvm\current\bin\clang.exe' } }; \
-    go build -trimpath -tags mygo_noinspector -ldflags '-s -w' -o quick-scan.exe ./cmd/quick-scan; \
+    go build -trimpath -tags mygo_noinspector -ldflags "-s -w -X quick-scan/internal/update.Version=$ver" -o quick-scan.exe ./cmd/quick-scan; \
     if ($LASTEXITCODE -ne 0) { throw '主程序编译失败' }; \
-    Write-Host '[ui] quick-scan.exe 完成'
+    Write-Host "[ui] quick-scan.exe 完成（$ver）"
 
 # 全量构建
 build: ui
@@ -75,7 +76,9 @@ test:
     if ($LASTEXITCODE -ne 0) { throw '测试失败' }
 
 # 跑主程序（会真的用 mDNS 找设备并连打印机）
+# QUICK_SCAN_NO_UPDATE：这里是仓库里直接跑的开发版，别让它去下载、安装线上版本。
 run: ui
+    $env:QUICK_SCAN_NO_UPDATE = '1'; \
     .\quick-scan.exe
 
 # ── 发布产物（dist\quick-scan-<版本>-win64.zip，内含单个 exe）──
@@ -98,6 +101,7 @@ package: build
 # 安装包只打根目录的 quick-scan.exe（upx 的压缩版在 dist\，不能进安装包）
 installer: build
     if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) { throw '未找到 makensis：scoop install nsis' }; \
+    New-Item -ItemType Directory -Force dist | Out-Null; \
     $ver = (((Select-String -Path app.rc -Pattern 'PRODUCTVERSION\s+([\d,]+)').Matches[0].Groups[1].Value -split ',')[0..2] -join '.'); \
     makensis /V2 /DVERSION=$ver installer.nsi; \
     if ($LASTEXITCODE -ne 0) { throw 'makensis 编安装包失败' }; \
