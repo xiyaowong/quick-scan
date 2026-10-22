@@ -10,8 +10,8 @@ import (
 )
 
 // 状态只由设备自己上报，所以拿它没有别的办法，只能轮询。
-// 半秒一次：一次小 XML 请求，换来"点扫描那一刻看到的就是当前状态"。
-const statusPollInterval = 520 * time.Millisecond
+// 一秒一次：点扫描时看到的至多旧一秒，扫描仪的忙/闲切换也在这个量级。
+const statusPollInterval = time.Second
 
 // 单次查询的上限。必须比轮询间隔宽：设备偶发慢一点不能因此被当成"读不到"。
 const statusTimeout = 2 * time.Second
