@@ -196,6 +196,10 @@ func Installable() bool {
 	if err != nil {
 		return false
 	}
+	// 正在被让位的那份临时 exe 不是安装位置，装完再启动就不该再动它。
+	if strings.Contains(filepath.Base(exe), ".old-") {
+		return false
+	}
 	want := installedDir()
 	if want == "" || !strings.EqualFold(filepath.Clean(want), filepath.Clean(filepath.Dir(exe))) {
 		return false
@@ -219,6 +223,8 @@ func (r *Release) Run(setup string) error {
 }
 
 // StepAside 把正在运行的程序改名，给安装包让出位置。返回原名和现在的位置。
+// 改名之后一直到装完，安装目录里没有 quick-scan.exe：用户这时点桌面图标会
+// 提示找不到文件。安装只持续几秒，且发生在启动的最初几帧，故接受。
 func StepAside() (string, string, error) {
 	exe, err := os.Executable()
 	if err != nil {

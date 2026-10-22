@@ -41,11 +41,14 @@ jobs:
 
       - uses: extractions/setup-just@v3
 
-      # LLVM（clang）和 Rust 在 windows-latest 上已有；windres 只有 MinGW 提供，
-      # NSIS 不保证预装，两个都装上。
-      - name: 安装 MinGW 和 NSIS
+      # windows-latest 自带 NSIS、LLVM（clang）和 Rust，缺的只有 windres，
+      # 它只在 MinGW 里。choco 把 bin 写进机器 PATH，但已经启动的 runner
+      # 不会重读，所以显式加到 GITHUB_PATH。
+      - name: 安装 MinGW
         shell: pwsh
-        run: choco install mingw nsis --no-progress -y
+        run: |
+          choco install mingw --no-progress -y
+          "C:\ProgramData\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: 单测
         shell: pwsh
@@ -65,10 +68,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # 依赖 $LASTEXITCODE 判断，别让原生命令的非零退出被当成脚本失败。
+          $ErrorActionPreference = 'Continue'
           $tag = "v$env:VERSION"
-          if (-not (gh release view $tag 2>$null)) {
+          gh release view $tag --json tagName *> $null
+          if ($LASTEXITCODE -ne 0) {
             gh release create $tag --verify-tag --title "快速扫描 $env:VERSION" --generate-notes
+            if ($LASTEXITCODE -ne 0) { throw "创建 release $tag 失败" }
           }
           gh release upload $tag `
             "dist\quick-scan-$env:VERSION-setup.exe" `
             "dist\quick-scan-$env:VERSION-win64.zip" --clobber
+          if ($LASTEXITCODE -ne 0) { throw "上传产物失败" }
