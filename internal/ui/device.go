@@ -114,10 +114,9 @@ func (a *app) startSubnetScan(mdnsErr error) {
 				a.setHint("")
 			}
 			if len(a.devices) == 0 {
-				if scanErr != nil || mdnsErr != nil {
-					a.setHint(noDeviceHint)
-					a.hintDetail = detailFromErrs(mdnsErr, scanErr)
-				}
+				// 没找到就直说，不管探测有没有报错：最常见的失败是两个错误都为 nil。
+				a.setHint(noDeviceHint)
+				a.hintDetail = detailFromErrs(mdnsErr, scanErr)
 			}
 		})
 	}()
