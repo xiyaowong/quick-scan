@@ -9,7 +9,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// onlineApp 造一台已探测在线的设备，好让扫描按钮进入可判断状态的路径。
+// onlineApp 造一台已探测在线的设备。
 func onlineApp(feeder bool) *app {
 	a := newApp()
 	a.devices = []scanner.DeviceInfo{{
@@ -34,14 +34,14 @@ func TestScanBlockedWhilePrinterBusy(t *testing.T) {
 	if !tt.HasText("打印机正在忙") {
 		t.Fatalf("界面没说明为什么不能扫：%v", tt.Texts())
 	}
-	// 按钮灰了；就算还有别的路径把点击送到这里，startScan 也要再挡一次。
+	// 按钮已灰；startScan 还要挡，防止点击和状态更新抢在同一帧。
 	a.startScan()
 	if a.scanning {
 		t.Fatal("忙的时候居然开始扫描了")
 	}
 }
 
-// 卡纸、卡门这类要用户动手的状态用红色提示，忙只是黄色提醒。
+// 卡纸、门开要用户动手，用红色；忙只是黄色提醒。
 func TestScanIssueSeverity(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -69,8 +69,7 @@ func TestScanIssueSeverity(t *testing.T) {
 	}
 }
 
-// 进纸口的状态只拦进纸口：玻璃板模式下不该被进纸口的卡纸/空纸挡住。
-// 进纸口缺纸尤其不能拦——用户可能只是想用玻璃板。
+// 玻璃板不该被进纸口的状态挡住。
 func TestAdfIssuesOnlyBlockFeeder(t *testing.T) {
 	for _, st := range []scanner.Status{
 		{State: "idle", ADF: "ScannerAdfEmpty"},
@@ -85,7 +84,7 @@ func TestAdfIssuesOnlyBlockFeeder(t *testing.T) {
 	}
 }
 
-// 进纸口没纸是扫描时才知道的事实，不该提前拦：按钮/提示都不出现。
+// 进纸口没纸不拦，也不出现在界面上——用户可能只是想用玻璃板。
 func TestAdfEmptyDoesNotBlock(t *testing.T) {
 	a := onlineApp(true)
 	a.devStatus, a.devStatusIdx = scanner.Status{State: "idle", ADF: "ScannerAdfEmpty"}, 1
@@ -98,7 +97,7 @@ func TestAdfEmptyDoesNotBlock(t *testing.T) {
 	}
 }
 
-// 设备换了一台，上一台报的"忙"不能继续拦住新设备。
+// 上一台报的"忙"不能继续拦住新设备。
 func TestStatusTiedToDevice(t *testing.T) {
 	a := onlineApp(false)
 	a.devStatus, a.devStatusIdx = scanner.Status{State: "processing"}, 1
@@ -119,7 +118,7 @@ func TestStatusTiedToDevice(t *testing.T) {
 	}
 }
 
-// 有些设备不报 ScannerStatus：读不到状态不能把按钮锁死。
+// 有的设备不报 ScannerStatus：读不到不能锁死按钮。
 func TestUnknownStatusDoesNotBlock(t *testing.T) {
 	a := onlineApp(false)
 	if got := a.scanIssue().Text; got != "" {

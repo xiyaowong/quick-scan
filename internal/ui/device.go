@@ -372,7 +372,7 @@ func (a *app) requestProbe(idx int, auto bool) {
 			a.sortDevices()
 			a.saveCache()
 			if ok {
-				a.requestStatusRefresh() // 刚连上就报一次状态，不用等下一轮轮询
+				a.requestStatusRefresh() // 刚连上先报一次，不等下一轮
 			}
 			a.advanceProbe(auto && !ok)
 		})
@@ -500,7 +500,7 @@ func (a *app) startScan() {
 	if a.scanning || a.restoring || a.devState != DevOnline {
 		return
 	}
-	// 按钮已经按状态灰掉了；这里再挡一次，免得"点下按钮"和"状态到达"抢在同一帧。
+	// 按钮已按状态灰掉；这里再挡一次，防止点击和状态更新抢在同一帧。
 	if a.scanIssue().Text != "" {
 		return
 	}
@@ -542,7 +542,7 @@ func (a *app) startScan() {
 			if err != nil {
 				a.scanStatus = err.Error()
 			}
-			a.requestStatusRefresh() // 扫完立刻回读：设备可能还在收尾，也可能已经空出来
+			a.requestStatusRefresh() // 扫完立刻回读，别停在扫描中的"忙"上
 		})
 	}()
 }

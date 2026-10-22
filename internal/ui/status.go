@@ -9,39 +9,35 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// 状态只由设备自己上报，所以拿它没有别的办法，只能轮询。
-// 一秒一次：点扫描时看到的至多旧一秒，扫描仪的忙/闲切换也在这个量级。
 const statusPollInterval = time.Second
 
-// 单次查询的上限。必须比轮询间隔宽：设备偶发慢一点不能因此被当成"读不到"。
+// 必须比轮询间隔宽，否则设备偶尔慢一点就被当成"读不到"。
 const statusTimeout = 2 * time.Second
 
 type statusTarget struct {
-	idx int // 0 = 这轮没有可查的设备
+	idx int
 	dev *scanner.DeviceInfo
 }
 
-// startStatusPoll 起一条独立的轮询协程。它和探测、扫描流程互不相干：
-// 扫描途中也照常刷新，扫描收尾时不会留下一个过期的"忙"把按钮锁死。
+// startStatusPoll 起一条独立的轮询协程：扫描卡住时它也照常刷新。
 func (a *app) startStatusPoll() {
 	if Win == nil {
 		return // 单元测试不跑后台轮询
 	}
 	if a.statusKick != nil {
-		return // 已经起过；再起一条会多出一倍请求，也再没人能停它
+		return // 再起一条就没人能停旧的了
 	}
 	a.statusKick = make(chan struct{}, 1)
 	go a.statusLoop()
 }
 
-// requestStatusRefresh 请轮询协程立刻查一次（探测成功、换设备、扫完之后）。
 func (a *app) requestStatusRefresh() {
 	if a.statusKick == nil {
 		return
 	}
 	select {
 	case a.statusKick <- struct{}{}:
-	default: // 已经有一单在排队，不用重复
+	default: // 已有一单排队
 	}
 }
 
@@ -57,8 +53,7 @@ func (a *app) statusLoop() {
 	}
 }
 
-// pollStatusOnce 在轮询协程里跑：向主线程要一份当前设备，查完再交回主线程。
-// 状态是主线程的数据，网络请求不能碰它。
+// pollStatusOnce 在轮询协程里跑：状态归主线程所有，网络请求不能碰它。
 func (a *app) pollStatusOnce() {
 	got := make(chan statusTarget, 1)
 	Win.Update(func() {
@@ -67,7 +62,7 @@ func (a *app) pollStatusOnce() {
 			got <- statusTarget{}
 			return
 		}
-		// 只带端点：状态查询不需要能力，也不该把这个指针带到别的线程去读。
+		// 只带端点：跨线程传的指针不能指向主线程还会改的结构。
 		got <- statusTarget{idx: d.Idx, dev: &scanner.DeviceInfo{
 			Idx: d.Idx, Name: d.Name, IP: d.IP, Port: d.Port, Path: d.Path,
 		}}
@@ -76,25 +71,22 @@ func (a *app) pollStatusOnce() {
 	var tg statusTarget
 	select {
 	case tg = <-got:
-	case <-time.After(statusPollInterval): // 主线程正忙：这一轮跳过，下一轮再来
+	case <-time.After(statusPollInterval): // 主线程正忙，跳过本轮
 		return
 	}
 	if tg.dev == nil {
 		return
 	}
 
-	// 请求本身另算超时：和轮询间隔一样长的话，设备慢一点每轮都会被判成"读不到"。
 	ctx, cancel := context.WithTimeout(context.Background(), statusTimeout)
 	defer cancel()
 	st, err := scanner.FetchStatus(ctx, tg.dev)
 	Win.Update(func() {
-		// 查的是哪台就写哪台：期间换了设备，这份结果作废。
 		cur := a.current()
 		if cur == nil || cur.Idx != tg.idx {
-			return
+			return // 期间换了设备
 		}
 		if err != nil {
-			// 读不到不等于不能扫：清空状态，按钮不受影响。
 			a.devStatus, a.devStatusIdx = scanner.Status{}, 0
 			return
 		}
@@ -102,7 +94,6 @@ func (a *app) pollStatusOnce() {
 	})
 }
 
-// statusOf 只认当前这台设备的状态：换过设备就不能拿上一台的状态冒充。
 func (a *app) statusOf(d *scanner.DeviceInfo) scanner.Status {
 	if d == nil || a.devStatusIdx != d.Idx {
 		return scanner.Status{}
@@ -112,12 +103,12 @@ func (a *app) statusOf(d *scanner.DeviceInfo) scanner.Status {
 
 type scanIssue struct {
 	Text   string
-	Danger bool // 卡纸、停住这类要用户动手的用红色；忙只是提醒
+	Danger bool // 要用户动手的（卡纸、停住）用红色；忙只是提醒
 }
 
-// scanIssue 说明此刻为什么不能扫描。只认和扫描直接相关的状态：
-// 进纸口缺纸不算——那会把玻璃板扫描一起挡住，用户也想不通。
-// 状态没读到就不拦：有些设备不报 ScannerStatus，不能因此把按钮锁死。
+// scanIssue 说明此刻为什么不能扫描。
+// 进纸口缺纸不在此列：它会把玻璃板扫描一起挡住。
+// 状态没读到就不拦——有的设备根本不报 ScannerStatus。
 func (a *app) scanIssue() scanIssue {
 	if a.devState != DevOnline {
 		return scanIssue{}
@@ -136,7 +127,7 @@ func (a *app) scanIssue() scanIssue {
 	return scanIssue{}
 }
 
-// printerState 状态栏里的打印机状态。没读到就返回空，不编一个。
+// printerState 状态栏里的打印机状态；没读到就返回空。
 func (a *app) printerState() (text string, fg, bg ui.Color) {
 	if a.devState != DevOnline {
 		return "", colMuted, ui.Transparent

@@ -1,5 +1,4 @@
-// 打印机状态：eSCL 的 ScannerStatus。和“连不连得上”是两回事——连上了也可能正忙、
-// 卡纸、进纸口没关好，这些要能在用户点扫描之前就看见。
+// 打印机状态：eSCL 的 ScannerStatus。连得上不等于能扫——也可能正忙、卡纸。
 package scanner
 
 import (
@@ -14,7 +13,6 @@ import (
 
 const statusTimeout = 4 * time.Second
 
-// eSCL 规范里的 ADF 状态取值。
 const (
 	adfProcessing = "ScannerAdfProcessing"
 	adfJam        = "ScannerAdfJam"
@@ -27,23 +25,21 @@ type Status struct {
 	ADF   string // scan:AdfState 原样值
 }
 
-// Busy 别的任务正占着扫描仪。
 func (s Status) Busy() bool {
 	return strings.EqualFold(s.State, "processing") || strings.EqualFold(s.ADF, adfProcessing)
 }
 
-// Stopped 设备停住了：常见于卡纸、盖子没关、硬件报错。
 func (s Status) Stopped() bool { return strings.EqualFold(s.State, "stopped") }
 
 func (s Status) ADFJam() bool      { return s.adfIs(adfJam) }
 func (s Status) ADFDoorOpen() bool { return s.adfIs(adfDoorOpen) }
 
-// Known 设备确实报了状态；没报时只能当"不知道"，不能当成空闲。
+// Known 没报状态时只能当"不知道"，不能当空闲。
 func (s Status) Known() bool { return s.State != "" || s.ADF != "" }
 
 func (s Status) adfIs(want string) bool { return strings.EqualFold(s.ADF, want) }
 
-// FetchStatus 读一次设备状态。失败不代表设备离线——离线由能力探测判断。
+// FetchStatus 失败不代表离线，离线由能力探测判断。
 func FetchStatus(ctx context.Context, d *DeviceInfo) (Status, error) {
 	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
 	defer cancel()
@@ -65,7 +61,7 @@ func FetchStatus(ctx context.Context, d *DeviceInfo) (Status, error) {
 	return parseStatus(body)
 }
 
-// parseStatus 只取根节点下的 State 和 AdfState：Jobs 里每条的 JobState 不能混进来。
+// parseStatus 只认根节点的 State/AdfState：Jobs 里每条 JobInfo 的 JobState 不能混进来。
 func parseStatus(data []byte) (Status, error) {
 	var raw struct {
 		State string `xml:"State"`

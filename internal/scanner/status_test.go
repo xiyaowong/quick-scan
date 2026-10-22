@@ -48,12 +48,12 @@ func TestStatusIdleAndEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 进纸口没纸只是设备的一个事实，不构成"忙"；界面也不该因此拦扫描。
+	// 进纸口没纸只是设备事实，不构成"忙"。
 	if st.Busy() || st.Stopped() || st.ADFJam() || !st.Known() {
 		t.Fatalf("idle 状态判断错了：%+v", st)
 	}
 
-	// 设备什么都不报：Known 必须是 false，不能被当成空闲。
+	// 设备什么都不报：不能当成空闲。
 	empty, err := parseStatus([]byte(`<scan:ScannerStatus xmlns:scan="s"/>`))
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestStatusStoppedAndDoor(t *testing.T) {
 	}
 }
 
-// 状态和发现走同一个端点前缀：Port/Path 都要跟着设备走。
+// 状态和发现走同一个端点前缀：Port/Path 要跟着设备走。
 func TestFetchStatusUsesDeviceEndpoint(t *testing.T) {
 	var gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +108,7 @@ func TestFetchStatusUsesDeviceEndpoint(t *testing.T) {
 		t.Fatalf("path = %q", gotPath)
 	}
 
-	// 非 200：报错，不能拿一个假状态糊弄上层。
+	// 非 200 要报错，不能拿假状态糊弄上层。
 	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "nope", http.StatusInternalServerError)
 	})
