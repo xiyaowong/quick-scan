@@ -4,6 +4,7 @@ package ui
 import (
 	"context"
 	"sort"
+	"strings"
 
 	"quick-scan/internal/platform"
 	"quick-scan/internal/scanner"
@@ -23,6 +24,25 @@ func (a *app) startup() {
 // netScanHint 让用户知道还在找，否则界面看起来像卡住了。
 const netScanHint = "正在扫描局域网 …"
 
+// mDNS 和网段扫描都没找到时给一句人话，原始错误收进 tooltip。
+const noDeviceHint = "没找到打印机。请确认打印机和电脑连的是同一个 Wi-Fi，且打印机已开机"
+
+// hint 一律从这里写：换提示时顺手清掉上一条的详情，不会串台。
+func (a *app) setHint(s string) {
+	a.hint = s
+	a.hintDetail = ""
+}
+
+func detailFromErrs(errs ...error) string {
+	var parts []string
+	for _, err := range errs {
+		if err != nil {
+			parts = append(parts, err.Error())
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
 // 只发现、不探测能力。
 // mDNS 没应答且没有能用的设备时，才兜底扫网段——扫描是为了找，不该每次启动都跑。
 func (a *app) startDetect() {
@@ -31,7 +51,7 @@ func (a *app) startDetect() {
 	}
 	a.detecting = true
 	if len(a.devices) == 0 {
-		a.hint = "正在检测设备 …"
+		a.setHint("正在检测设备 …")
 	}
 	Win.Update(func() {})
 	go func() {
@@ -59,7 +79,7 @@ func (a *app) applyDiscovery(found []scanner.DeviceInfo, mdnsErr error) {
 		return
 	}
 	a.applyDetect(found)
-	a.hint = ""
+	a.setHint("")
 	if len(found) > 0 {
 		a.probeFirstOnline()
 	}
@@ -81,7 +101,7 @@ func (a *app) startSubnetScan(mdnsErr error) {
 	}
 	a.netScanning = true
 	if len(a.devices) == 0 {
-		a.hint = netScanHint
+		a.setHint(netScanHint)
 	}
 	Win.Update(func() {})
 	go func() {
@@ -91,14 +111,12 @@ func (a *app) startSubnetScan(mdnsErr error) {
 		Win.Update(func() {
 			a.netScanning = false
 			if a.hint == netScanHint {
-				a.hint = ""
+				a.setHint("")
 			}
 			if len(a.devices) == 0 {
-				switch {
-				case scanErr != nil:
-					a.hint = scanErr.Error()
-				case mdnsErr != nil:
-					a.hint = mdnsErr.Error()
+				if scanErr != nil || mdnsErr != nil {
+					a.setHint(noDeviceHint)
+					a.hintDetail = detailFromErrs(mdnsErr, scanErr)
 				}
 			}
 		})
@@ -121,7 +139,7 @@ func (a *app) addDiscovered(d scanner.DeviceInfo) {
 	d.Online = false
 	a.devices = append(a.devices, d)
 	if a.hint == netScanHint {
-		a.hint = ""
+		a.setHint("")
 	}
 	a.refreshState()
 	a.sortDevices()
@@ -162,7 +180,7 @@ func (a *app) resetDevices(devs []scanner.DeviceInfo) {
 		d.Online = false
 		a.devices = append(a.devices, d)
 	}
-	a.hint = ""
+	a.setHint("")
 }
 
 func (a *app) applyCached(devs []scanner.DeviceInfo, selected string) {
@@ -281,7 +299,7 @@ func (a *app) probeSelected() {
 	if a.probed[a.devices[a.devSel].Idx] {
 		// 已经探过：清掉上一台留下的提示，并把参数校准到这台设备。
 		if !a.probing {
-			a.hint = ""
+			a.setHint("")
 		}
 		a.applyDefaults(a.devSel)
 		a.refreshState()
@@ -323,7 +341,7 @@ func (a *app) requestProbe(idx int, auto bool) {
 	seq := a.probeSeq
 	cur := a.listIndex(idx)
 	// 接力要一台台试，必须说清在等谁，否则又变成"卡住了？"。
-	a.hint = "正在连接 " + a.devices[cur].DisplayName() + " …"
+	a.setHint("正在连接 " + a.devices[cur].DisplayName() + " …")
 	gen := a.devGen
 	dev := a.devices[cur] // 拷贝：探测在后台写，结果回主线程再落进状态
 	Win.Update(func() {})
@@ -347,11 +365,11 @@ func (a *app) requestProbe(idx int, auto bool) {
 			}
 			a.probed[idx] = true
 			ok := err == nil
-			a.hint = ""
+			a.setHint("")
 			if !ok {
 				// 明确失败：能力留空，refreshState 会标红；接力中提示会被下一次覆盖。
 				dev.Online = false
-				a.hint = err.Error()
+				a.setHint(err.Error())
 			}
 			dev.Idx = idx
 			dev.Name = a.devices[cur].Name // 名单里的名字更短
