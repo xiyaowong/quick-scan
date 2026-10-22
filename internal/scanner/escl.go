@@ -620,11 +620,12 @@ func pickColorMode(in *inputCaps, key string) string {
 	return esclColorName(key)
 }
 
-// 黑白用灰度向设备取图，本地再二值化：实测 HP 116w 上报支持 BlackAndWhite1，
-// 但配 image/jpeg 时任务直接 Aborted（ImagesCompleted=0），只肯把黑白包进 PDF。
-// 灰度 JPEG 在各家设备上都稳，阈值化又不依赖设备实现。
+// 黑白一律向设备要灰度，本地再二值化，不下发 BlackAndWhite1。
+// 调试时遇到过：设备能力里报了 BlackAndWhite1，但配 image/jpeg 时任务直接
+// Aborted（ImagesCompleted=0），NextDocument 一直是 410。上报支持不等于能扫，
+// 与其逐个设备去赌它对 BlackAndWhite1 的实现，不如要最保守的灰度自己阈值化。
+// 失败后再退回灰度也不划算：设备要过一会儿才肯接下一个任务。
 // 设备只能灰度时同样走这条：界面选的是「黑白」，输出灰度就是骗人。
-// 能力没上报（in.Colors 为空）也按这条走：灰度是最保守的请求。
 func scanColor(in *inputCaps, key string) (mode string, bilevel bool) {
 	if key != ColorModeBW {
 		return pickColorMode(in, key), false

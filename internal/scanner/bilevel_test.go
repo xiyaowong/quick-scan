@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// 黑白不能把 BlackAndWhite1 + JPEG 下发：真机上这一单会被设备 Aborted。
+// 黑白不能把 BlackAndWhite1 + JPEG 下发：调试时见过设备直接 Aborted。
 func TestScanBWRequestsGrayscale(t *testing.T) {
 	fs := newFakeScanner(t, 1)
 	d := fs.device()
