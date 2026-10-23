@@ -15,7 +15,7 @@ const (
 
 // 测试里替换成临时目录。
 var sessionDir = func() string {
-	return filepath.Join(os.TempDir(), sessionDirName)
+	return filepath.Join(tempRoot(), "session")
 }
 
 type SessionPage struct {

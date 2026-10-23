@@ -134,7 +134,8 @@ Section "Uninstall"
   ; 不用 RMDir /r：目录里有别的东西就留着，不替用户做决定。
   RMDir "$INSTDIR"
 
-  ; 运行期残留：配置文件、OCR 模型解包目录、崩溃恢复会话。
+  ; 运行期残留：统一临时目录（缓存、会话、OCR 模型）。
+  ; 后两行是旧版本分开存放的布局，升级过的机器上还会留着。
   RMDir /r "$TEMP\${APP_ID}"
   RMDir /r "$TEMP\${APP_ID}-session"
   FindFirst $0 $1 "$TEMP\${APP_ID}_*"

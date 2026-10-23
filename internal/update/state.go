@@ -9,7 +9,7 @@ import (
 	"quick-scan/internal/platform"
 )
 
-// 检查记录放 %TEMP%\quick-scan\：和扫描设置、设备缓存同一个口径，
+// 检查记录放 %TEMP%\quick-scan\cache\：和扫描设置、设备缓存同一个口径，
 // 不建配置目录、不写注册表。
 const stateFileName = "update.json"
 
