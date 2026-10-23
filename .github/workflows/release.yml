@@ -41,14 +41,16 @@ jobs:
 
       - uses: extractions/setup-just@v3
 
-      # windows-latest 自带 NSIS、LLVM（clang）和 Rust，缺的只有 windres，
-      # 它只在 MinGW 里。choco 把 bin 写进机器 PATH，但已经启动的 runner
-      # 不会重读，所以显式加到 GITHUB_PATH。
-      - name: 安装 MinGW
+      # windows-latest 自带 LLVM（clang）和 Rust，windres 和 makensis 都得自己装。
+      # choco 把 bin 写进机器 PATH，但已经启动的 runner 不会重读，所以显式加到 GITHUB_PATH。
+      - name: 安装 MinGW 和 NSIS
         shell: pwsh
         run: |
-          choco install mingw --no-progress -y
-          "C:\ProgramData\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          choco install mingw nsis --no-progress -y
+          @(
+            "C:\ProgramData\mingw64\bin"
+            "C:\Program Files (x86)\NSIS"
+          ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       # ocrbridge 全量编译要三四分钟，缓存命中后只剩链接。
       - uses: Swatinem/rust-cache@v2
@@ -61,11 +63,15 @@ jobs:
           $env:CGO_ENABLED = '0'
           go test ./...
 
-      - name: 编译并打包
+      # 两个 step 分开：合在一起时 just package 的成功会盖掉 just installer
+      # 的失败，step 照样报绿，安装包没编出来也没人知道。
+      - name: 编安装包
         shell: pwsh
-        run: |
-          just installer
-          just package
+        run: just installer
+
+      - name: 打包免安装版
+        shell: pwsh
+        run: just package
 
       - name: 发布
         shell: pwsh
