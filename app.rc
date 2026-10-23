@@ -20,6 +20,8 @@ BEGIN
     BEGIN
       VALUE "FileDescription", "快速扫描"
       VALUE "ProductName",     "quick-scan"
+      VALUE "CompanyName",     "xiyaowong"
+      VALUE "LegalCopyright",  "xiyaowong · MIT"
       VALUE "FileVersion",     "0.1.0"
       VALUE "ProductVersion",  "0.1.0"
       VALUE "OriginalFilename","quick-scan.exe"
