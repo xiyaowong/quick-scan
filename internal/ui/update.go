@@ -33,7 +33,7 @@ func (a *app) startUpdateCheck() {
 		}
 		rel, err := update.Check(context.Background())
 		if err != nil {
-			return // 断网、限流、接口报错：都当没这回事
+			return
 		}
 		update.MarkChecked()
 		if rel == nil {
@@ -69,7 +69,7 @@ func applyPendingUpdate() {
 	}
 	exe, old, err := update.StepAside()
 	if err != nil {
-		return // 让不开位置：留到下次，不打扰用户
+		return // 让不开位置：留到下次
 	}
 	if err := r.Run(path, update.InstallDir()); err != nil {
 		update.Restore(exe, old)
