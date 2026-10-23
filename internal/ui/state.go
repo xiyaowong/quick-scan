@@ -250,6 +250,8 @@ type app struct {
 	selected map[uint64]bool
 	// pendingDelete 是右键菜单选中的删除：等这一轮格子建完再删，免得建到一半缩短 pages。
 	pendingDelete uint64
+	// dragErr 是拖出去时落盘失败的原始错误：拖拽开始时拿不到返回值，留给 Done 报。
+	dragErr       error
 	scanning      bool
 	scanCancel    context.CancelFunc // 停止扫描用；不扫时为 nil
 	scanStarted   time.Time          // 本批开始时刻：双击防护用

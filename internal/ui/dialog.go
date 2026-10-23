@@ -333,6 +333,7 @@ func (a *app) rotatePage(id uint64) {
 			a.lightbox.Rot = p.Rot
 		}
 		a.saveSession()
+		a.warmDragCopy(id)
 		return
 	}
 }

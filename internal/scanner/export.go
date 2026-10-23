@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"quick-scan/internal/platform"
+
 	"github.com/signintech/gopdf"
 )
 
@@ -112,6 +114,20 @@ func exportPDF(pages []ExportPage, outPath string, prog ProgressFunc) error {
 		prog(i+1, len(pages))
 	}
 	return pdf.WritePdf(outPath)
+}
+
+// WritePageJPEG 把一页按旋转角度烘成 JPEG 写到 path（覆盖）。
+// 会话里的原图不带角度，直接交给别的程序会躺倒；拖拽的副本走这里。
+func WritePageJPEG(p ExportPage, path string) error {
+	img, err := Decode(p.Path)
+	if err != nil {
+		return fmt.Errorf("读原图失败: %w", err)
+	}
+	jpg, err := encodeJPEG(Rotate90(img, p.Rot), 88)
+	if err != nil {
+		return fmt.Errorf("JPG 编码失败: %w", err)
+	}
+	return platform.WriteFileAtomic(path, jpg, 0o755)
 }
 
 func exportJPGs(pages []ExportPage, dir, name string, prog ProgressFunc) ([]string, error) {
