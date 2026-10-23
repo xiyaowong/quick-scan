@@ -136,4 +136,8 @@ func TestFetchStatusUnreachable(t *testing.T) {
 	if !errors.Is(err, ErrUnreachable) {
 		t.Fatalf("err = %v，want ErrUnreachable", err)
 	}
+	// 底层网络错误也要留在链上：排查时不能只剩一句“设备连不上”。
+	if _, ok := errors.AsType[*url.Error](err); !ok {
+		t.Fatalf("底层网络错误没保留：%v", err)
+	}
 }

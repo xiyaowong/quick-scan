@@ -1,7 +1,9 @@
 package scanner
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -75,13 +77,16 @@ func jpgOutcome(dir string, written []string) *ExportOutcome {
 
 func uniquePath(dir, name, ext string) string {
 	p := filepath.Join(dir, name+"."+ext)
-	i := 2
-	for {
-		if _, err := os.Stat(p); os.IsNotExist(err) {
+	for i := 2; ; i++ {
+		_, err := os.Stat(p)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return p
+		case err != nil:
+			// 读不出的原因（权限、父路径不是目录）留给写入时报，别在这里空转。
 			return p
 		}
 		p = filepath.Join(dir, fmt.Sprintf("%s(%d).%s", name, i, ext))
-		i++
 	}
 }
 
@@ -113,7 +118,10 @@ func exportPDF(pages []ExportPage, outPath string, prog ProgressFunc) error {
 		}
 		prog(i+1, len(pages))
 	}
-	return pdf.WritePdf(outPath)
+	if err := pdf.WritePdf(outPath); err != nil {
+		return fmt.Errorf("写 PDF 失败: %w", err)
+	}
+	return nil
 }
 
 // WritePageJPEG 把一页按旋转角度烘成 JPEG 写到 path（覆盖）。

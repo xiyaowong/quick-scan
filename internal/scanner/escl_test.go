@@ -3,6 +3,7 @@ package scanner
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 const capsSample = `<?xml version="1.0" encoding="UTF-8"?>
@@ -597,5 +599,42 @@ func TestProbeOffline(t *testing.T) {
 	}
 	if d.Online {
 		t.Fatal("offline device marked online")
+	}
+}
+
+// 能力只读到一半：设备已经应答，探测仍算在线，按默认能力继续。
+func TestProbeTruncatedCapabilitiesStaysOnline(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "4096")
+		fmt.Fprint(w, "<scan:ScannerCapabilities")
+	}))
+	defer srv.Close()
+
+	d := deviceOfURL(t, srv.URL)
+	if err := Probe(context.Background(), &d); err != nil {
+		t.Fatalf("设备已应答却探测失败：%v", err)
+	}
+	if !d.Online {
+		t.Fatal("设备已应答，却被判成不在线")
+	}
+}
+
+// 重试期间连不上，超时错误要带上最后一次传输错误，不能只剩一句“超时”。
+func TestWaitForDocumentKeepsTransportError(t *testing.T) {
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	ln.Close() // 端口随即关闭：连接被拒绝
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	_, err = waitForDocument(ctx, "http://"+addr+"/eSCL/ScanJobs/1")
+	if err == nil || !strings.Contains(err.Error(), "等待扫描结果超时") {
+		t.Fatalf("err = %v，wanted 超时", err)
+	}
+	if _, ok := errors.AsType[*url.Error](err); !ok {
+		t.Fatalf("传输错误没保留在链上：%v", err)
 	}
 }
