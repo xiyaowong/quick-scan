@@ -652,6 +652,7 @@ func (a *app) appendPage(p Page) {
 		a.startOCRSuggest()
 	}
 	a.saveSession()
+	a.warmDragCopy(p.ID)
 }
 
 // 解码放后台，页面按清单顺序一页页出现，不在 UI 线程批量卡住。

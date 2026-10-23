@@ -49,3 +49,7 @@ func Cleanup() {
 func EnsurePagesDir() error {
 	return os.MkdirAll(SessionDir(), 0o755)
 }
+
+// DragDir 放拖给别的程序的图片副本：对方在放下那一刻读的仍是磁盘上的文件，
+// 所以不能拿内存里的图冒充。放在会话目录下，正常退出跟页面一起清掉。
+func DragDir() string { return filepath.Join(SessionDir(), "drag") }
