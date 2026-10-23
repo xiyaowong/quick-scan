@@ -9,6 +9,7 @@ import (
 
 	"quick-scan/internal/platform"
 	"quick-scan/internal/scanner"
+	"quick-scan/internal/update"
 
 	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/ui"
@@ -626,6 +627,9 @@ func (a *app) statusBar(c *ui.Context) {
 			if a.hintDetail != "" {
 				t.Tooltip(a.hintDetail)
 			}
+		}
+		if update.Version != "" {
+			ui.Text(c, update.Version).FontSize(11).TextColor(colFaint)
 		}
 	})
 }

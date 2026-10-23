@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"quick-scan/internal/scanner"
+	"quick-scan/internal/update"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -141,6 +142,17 @@ func TestStatusBarShowsPrinterState(t *testing.T) {
 	tt.Frame()
 	if !tt.HasText("正在忙") || tt.HasText("空闲") {
 		t.Fatalf("状态栏没跟着变：%v", tt.Texts())
+	}
+}
+
+func TestStatusBarShowsVersion(t *testing.T) {
+	old := update.Version
+	update.Version = "0.1.0"
+	t.Cleanup(func() { update.Version = old })
+
+	tt := ui.NewTester(onlineApp(false).view, 1200, 800)
+	if !tt.HasText("0.1.0") {
+		t.Fatalf("状态栏没显示版本号：%v", tt.Texts())
 	}
 }
 
