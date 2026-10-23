@@ -39,7 +39,7 @@ func installedDir() string {
 	}
 	defer procRegCloseKey.Call(uintptr(h))
 
-	// 只认提供了静默卸载命令的安装：没有它就没法悄悄升级。
+	// 没有静默卸载命令的安装，装它的时候就做不到静默，升级同理。
 	if regString(h, "QuietUninstallString") == "" {
 		return ""
 	}
