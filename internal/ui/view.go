@@ -12,6 +12,7 @@ import (
 	"quick-scan/internal/update"
 
 	"github.com/egoist/mygo/plugins/loading"
+	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -110,7 +111,8 @@ func (a *app) emptyState(c *ui.Context) {
 	})
 }
 
-// 不在这里 .Drag()：GridView 的 Reorder 已在外层挂了拖拽源，内层再挂会抢走按下事件。
+// 拖出去的能力挂在缩略图上：GridView 的 Reorder 已经给整张卡片挂了排序用的拖拽源，
+// 一个元素只认一个，两者只能分区域。
 func (a *app) pageCell(c *ui.Context, i int) {
 	// 删除按钮在这一帧构建时就执行，pages 已经变短；GridView 仍按本帧开头的
 	// 页数继续建后面的格子，越界的先跳过——点击会触发重绘，下一遍就对齐了。
@@ -139,6 +141,10 @@ func (a *app) pageCell(c *ui.Context, i int) {
 				})
 			}
 		})
+		// 缩略图拖出去就是一张图片；卡片其余部分留给 GridView 的拖动排序。
+		frame.Drag(pageDrag{id: p.ID}).DragDataFrom(func() transfer.Data {
+			return a.pageDragData(i)
+		}, transfer.DragOptions{Operations: transfer.Copy, Done: a.dragDone})
 		ui.Row(c).Absolute().Left(8).Top(8).Padding(2, 6, 2, 6).Radius(4).
 			Background(ui.RGBA(0, 0, 0, 0.46)).Children(func() {
 			ui.Text(c, padPage(i+1)).FontSize(9.5).FontWeight(600).
@@ -161,6 +167,13 @@ func (a *app) pageCell(c *ui.Context, i int) {
 			}
 		})
 	})
+	// 拖回网格：落在哪一页上就排到那一页前面。拖到别的程序走不到这里。
+	if _, over := ui.DragOver[pageDrag](card); over {
+		card.Border(2, colAccent)
+	}
+	if v, ok := ui.Drop[pageDrag](card); ok {
+		a.dropOnPage(v.id, i)
+	}
 	if card.Clicked() || card.DoubleClicked() {
 		a.openLightbox(i)
 	}
