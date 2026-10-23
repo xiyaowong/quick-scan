@@ -90,6 +90,22 @@ func TestDeleteSelectedPage(t *testing.T) {
 	}
 }
 
+// 缩略图是系统拖拽源，按下事件落在它身上；点缩略图看大图不能因此失灵。
+func TestClickThumbnailOpensLightbox(t *testing.T) {
+	a := newApp()
+	addPages(a, 1)
+	tt := ui.NewTester(a.view, 1200, 800)
+
+	r, ok := tt.Find("01")
+	if !ok {
+		t.Fatalf("没找到第 1 页的格子：%v", tt.Texts())
+	}
+	tt.ClickAt(r.X+r.W/2, r.Y+r.H+30)
+	if a.lightbox == nil {
+		t.Fatal("点缩略图没有打开大图")
+	}
+}
+
 func addPages(a *app, n int) {
 	img := ui.NewBitmap(image.NewRGBA(image.Rect(0, 0, 40, 56)))
 	for i := range n {
