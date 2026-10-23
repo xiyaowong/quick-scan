@@ -11,8 +11,8 @@
 1 ICON "app.ico"
 
 1 VERSIONINFO
-FILEVERSION     1,0,0,0
-PRODUCTVERSION  1,0,0,0
+FILEVERSION     1,0,1,0
+PRODUCTVERSION  1,0,1,0
 BEGIN
   BLOCK "StringFileInfo"
   BEGIN
@@ -22,8 +22,8 @@ BEGIN
       VALUE "ProductName",     "quick-scan"
       VALUE "CompanyName",     "xiyaowong"
       VALUE "LegalCopyright",  "xiyaowong · MIT"
-      VALUE "FileVersion",     "1.0.0"
-      VALUE "ProductVersion",  "1.0.0"
+      VALUE "FileVersion",     "1.0.1"
+      VALUE "ProductVersion",  "1.0.1"
       VALUE "OriginalFilename","quick-scan.exe"
     END
   END
