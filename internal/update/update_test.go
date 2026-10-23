@@ -14,17 +14,15 @@ import (
 )
 
 // fakeGitHub 起一个只会给 releases/latest 的假接口。
-// 默认关掉镜像：不然真镜像会让「接口挂了」之类的用例悄悄通过。
 func fakeGitHub(t *testing.T, body string) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(body))
 	}))
 	t.Cleanup(srv.Close)
-	old, oldMirror := apiURL, Mirror
-	Mirror = ""
+	old := apiURL
 	apiURL = srv.URL + "/releases/latest"
-	t.Cleanup(func() { apiURL, Mirror = old, oldMirror })
+	t.Cleanup(func() { apiURL = old })
 }
 
 func withVersion(t *testing.T, v string) {
@@ -233,7 +231,6 @@ func TestDownloadRejectsBadHash(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	noMirror(t)
 	r := &Release{Version: "0.2.0", URL: srv.URL, SHA256: hex.EncodeToString(make([]byte, 32)), Size: 3}
 	dst := filepath.Join(t.TempDir(), "setup.exe")
 	if err := r.Download(context.Background(), dst); err == nil {
@@ -243,96 +240,5 @@ func TestDownloadRejectsBadHash(t *testing.T) {
 		if _, err := os.Stat(p); err == nil {
 			t.Fatalf("%s 没清掉", p)
 		}
-	}
-}
-
-func noMirror(t *testing.T) {
-	t.Helper()
-	old, oldAllowed := Mirror, downloadAllowed
-	Mirror = ""
-	downloadAllowed = func(string) bool { return true } // httptest 只给 http
-	t.Cleanup(func() { Mirror, downloadAllowed = old, oldAllowed })
-}
-
-// 直连不通时走镜像，镜像来的内容同样要过摘要。
-func TestDownloadFallsBackToMirror(t *testing.T) {
-	noMirror(t)
-	payload := []byte("installer-bytes")
-	sum := sha256.Sum256(payload)
-	var mirrored bool
-	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mirrored = true
-		if r.URL.Path != "/https://github.invalid/x/setup.exe" {
-			t.Errorf("镜像收到的路径不对：%q", r.URL.Path)
-			http.NotFound(w, r)
-			return
-		}
-		_, _ = w.Write(payload)
-	}))
-	defer proxy.Close()
-
-	Mirror = proxy.URL + "/"
-	// 用不存在的域名：直连必定失败，只剩镜像一条路。
-	r := &Release{
-		Version: "0.2.0",
-		URL:     "https://github.invalid/x/setup.exe",
-		SHA256:  hex.EncodeToString(sum[:]),
-		Size:    int64(len(payload)),
-	}
-	dst := filepath.Join(t.TempDir(), "setup.exe")
-	// 直连域名解析不了：只剩镜像一条路。
-	if err := r.Download(context.Background(), dst); err != nil {
-		t.Fatalf("镜像下载失败：%v", err)
-	}
-	if !mirrored || !r.Ready(dst) {
-		t.Fatalf("没走镜像或校验没过：mirrored=%v", mirrored)
-	}
-}
-
-// 没有摘要的旧资产不能走代理：代理能改内容，验不出来。
-func TestDownloadSkipsMirrorWithoutDigest(t *testing.T) {
-	noMirror(t)
-	hits := 0
-	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits++
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}))
-	defer proxy.Close()
-	Mirror = proxy.URL + "/"
-
-	r := &Release{Version: "0.2.0", URL: "https://github.com/x/setup.exe", Size: 3}
-	dst := filepath.Join(t.TempDir(), "setup.exe")
-	if err := r.Download(context.Background(), dst); err == nil {
-		t.Fatal("直连失败且没有摘要，应该报错")
-	}
-	if hits != 0 {
-		t.Fatalf("没有摘要却请求了镜像 %d 次", hits)
-	}
-}
-
-// GitHub 接口不通时从镜像查一次版本。
-func TestCheckFallsBackToMirror(t *testing.T) {
-	fakeGitHub(t, ``) // 它会把 Mirror 清掉，这里自己重新设
-	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"tag_name":"v0.2.0","assets":[{"name":"quick-scan-0.2.0-setup.exe","browser_download_url":"https://x/s.exe","size":5,"digest":"sha256:`+hex.EncodeToString(make([]byte, 32))+`"}]}`)
-	}))
-	defer proxy.Close()
-	Mirror = proxy.URL + "/"
-	apiURL = "http://127.0.0.1:1/releases/latest"
-	withVersion(t, "0.1.0")
-
-	r, err := Check(context.Background())
-	if err != nil || r == nil || r.Version != "0.2.0" {
-		t.Fatalf("Check = %+v %v", r, err)
-	}
-}
-
-// 两边都不通：照旧只返回错误，调用方丢掉。
-func TestCheckMirrorAlsoFails(t *testing.T) {
-	fakeGitHub(t, ``)
-	withVersion(t, "0.1.0")
-	apiURL, Mirror = "http://127.0.0.1:1/releases/latest", "http://127.0.0.1:2/"
-	if _, err := Check(context.Background()); err == nil {
-		t.Fatal("两边都连不上应该报错")
 	}
 }
