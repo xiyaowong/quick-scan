@@ -44,17 +44,19 @@ icon:
 #   子窗口；mygo 自定义标题栏的按钮/顶边正是这种子窗口，于是启动报
 #   "cannot create the window controls of a window with a hidden title bar"，贴边缩放和
 #   贴靠布局也一起失效。Windows 8（6.2）起才支持，这里取 10.0 与内部链接器对齐。
-# cgo：CC 会原样传给 clang 侧的驱动，路径带空格时必须自带引号，
-# 否则 cgo 按空格切词，报 "C:\Program" 找不到（CI 的 clang 在 Program Files 下）。
-# -fuse-ld=lld：不让 clang 落到 MSVC 的 link.exe 上，它读不了 Go 给的 .ld 响应文件
-# （CI 上报 LNK1107: invalid or corrupt file）。lld-link 随 LLVM 一起安装。
+# cgo：CC 会原样交给 Go，路径带空格和额外参数都要写在这里。
+# -fuse-ld=lld：不让 clang 落到 MSVC 的 link.exe 上（它读不了 Go 给的 .ld
+#   响应文件，报 LNK1107）；必须放在 CC 里，Go 用 `clang -Wl,--version` 探测
+#   是不是 LLD，探测不到就会继续传那个 .ld 脚本（实测 CI 上如此）。
+#   引号只包 exe 本身，参数留在外面。
 ui: icon ocr
     $env:CGO_ENABLED = '1'; \
     $env:GOARCH = 'amd64'; \
-    $env:CGO_LDFLAGS = '-Xlinker /subsystem:console,10.0 -fuse-ld=lld'; \
+    $env:CGO_LDFLAGS = '-Xlinker /subsystem:console,10.0'; \
     $ver = (((Select-String -Path app.rc -Pattern 'PRODUCTVERSION\s+([\d,]+)').Matches[0].Groups[1].Value -split ',')[0..2] -join '.'); \
     if (-not $env:CC) { $env:CC = if (Get-Command clang -ErrorAction SilentlyContinue) { (Get-Command clang).Source } else { 'D:\Scoop\apps\llvm\current\bin\clang.exe' } }; \
     if ($env:CC -match '\s' -and $env:CC -notmatch '^"') { $env:CC = '"' + $env:CC + '"' }; \
+    if ($env:CC -notmatch 'fuse-ld') { $env:CC = $env:CC + ' -fuse-ld=lld' }; \
     go build -trimpath -tags mygo_noinspector -ldflags "-s -w -X quick-scan/internal/update.Version=$ver" -o quick-scan.exe ./cmd/quick-scan; \
     if ($LASTEXITCODE -ne 0) { throw '主程序编译失败' }; \
     Write-Host "[ui] quick-scan.exe 完成（$ver）"
