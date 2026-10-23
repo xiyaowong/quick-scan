@@ -36,17 +36,16 @@ const (
 
 // 测试里替换成假服务。
 var (
-	apiURL   = "https://api.github.com/repos/" + repo + "/releases/latest"
-	cacheDir = defaultCacheDir
-	runSetup = runInstaller
-	// 测试里换成放行假服务的版本。
+	apiURL          = "https://api.github.com/repos/" + repo + "/releases/latest"
+	cacheDir        = defaultCacheDir
+	runSetup        = runInstaller
 	downloadAllowed = httpsURL
 )
 
 // Release 是比当前版本新的一次发布。
 type Release struct {
 	Version string
-	Asset   string // 安装包文件名（带版本号）
+	Asset   string
 	URL     string
 	SHA256  string // 可能为空：GitHub 没算摘要的旧资产
 	Size    int64
@@ -155,7 +154,7 @@ func (r *Release) Download(ctx context.Context, dst string) error {
 	return nil
 }
 
-// Ready 本地文件完整（大小、摘要都对），可反复调。
+// Ready 本地文件完整（大小、摘要都对）。
 func (r *Release) Ready(path string) bool {
 	f, err := os.Open(path)
 	if err != nil {
@@ -247,7 +246,6 @@ func Restore(exe, old string) {
 }
 
 // CleanLeftovers 清掉上次让位留下的旧 exe 和没下完的 .part。
-// 目录取安装位置：程序自己所在目录，免安装版也同样适用。
 func CleanLeftovers() {
 	if dir, err := Dir(); err == nil {
 		gone, _ := filepath.Glob(filepath.Join(dir, "*.old-*"))
@@ -263,7 +261,7 @@ func CleanLeftovers() {
 	}
 }
 
-// Dir 程序所在目录。
+// Dir 程序所在目录，免安装版也适用。
 func Dir() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
