@@ -127,8 +127,9 @@ func (a *app) pageCell(c *ui.Context, i int) {
 	if hovered {
 		card.Border(1, colAccentLine).Shadow(0, 4, 14, 0, shadowCard)
 	}
+	var frame ui.Element
 	card.Children(func() {
-		frame := ui.Column(c).Grow(1).Background(colPanelSoft).Padding(9).Center()
+		frame = ui.Column(c).Grow(1).Background(colPanelSoft).Padding(9).Center()
 		frame.Children(func() {
 			ui.Image(c, p.thumb()).Fill().Fit(ui.Contain).Radius(2)
 			if hovered {
@@ -174,7 +175,8 @@ func (a *app) pageCell(c *ui.Context, i int) {
 	if v, ok := ui.Drop[pageDrag](card); ok {
 		a.dropOnPage(v.id, i)
 	}
-	if card.Clicked() || card.DoubleClicked() {
+	// 缩略图自己是拖拽源，按下的点击记在它身上；卡片其余区域的点击仍记在 card 上。
+	if frame.Clicked() || frame.DoubleClicked() || card.Clicked() || card.DoubleClicked() {
 		a.openLightbox(i)
 	}
 	card.ContextMenu(func(m *ui.Menu) { a.pageMenu(m, i, p.ID) })
