@@ -50,6 +50,11 @@ jobs:
           choco install mingw --no-progress -y
           "C:\ProgramData\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
+      # ocrbridge 全量编译要三四分钟，缓存命中后只剩链接。
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ocrbridge
+
       - name: 单测
         shell: pwsh
         run: |
