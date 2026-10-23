@@ -57,12 +57,16 @@ func FetchStatus(ctx context.Context, d *DeviceInfo) (Status, error) {
 	req.Header.Set("Accept", "application/xml, text/xml")
 	resp, err := scannerHTTP.Do(req)
 	if err != nil {
-		return Status{}, fmt.Errorf("%w：%v", ErrUnreachable, err)
+		// 两个 %w：上层既要认 ErrUnreachable，也要能查底层网络错误。
+		return Status{}, fmt.Errorf("%w：%w", ErrUnreachable, err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
 		return Status{}, fmt.Errorf("设备状态返回 HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return Status{}, fmt.Errorf("读取设备状态失败: %w", err)
 	}
 	return parseStatus(body)
 }

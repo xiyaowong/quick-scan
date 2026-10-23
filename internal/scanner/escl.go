@@ -379,9 +379,13 @@ func Probe(ctx context.Context, d *DeviceInfo) error {
 		return fmt.Errorf("连不上设备：%w", err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("设备返回 HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		// 设备已经应答，只是能力没读全：仍算在线，按默认能力处理。
+		body = nil
 	}
 
 	caps, perr := parseCapabilities(body)
@@ -811,6 +815,7 @@ func waitForDocument(ctx context.Context, pageURL string) (*http.Response, error
 	// 复用同一个 timer：退避循环会转很多轮。
 	wait := time.NewTimer(delay)
 	defer wait.Stop()
+	var lastErr error
 	for {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
 		if err != nil {
@@ -830,10 +835,15 @@ func waitForDocument(ctx context.Context, pageURL string) (*http.Response, error
 				resp.Body.Close()
 				return nil, fmt.Errorf("取扫描页失败（HTTP %d）", resp.StatusCode)
 			}
+		} else if ctx.Err() == nil {
+			lastErr = err // 连不上之类的传输错误：重试到超时，但别把原因丢了
 		}
 		wait.Reset(delay)
 		select {
 		case <-ctx.Done():
+			if lastErr != nil {
+				return nil, fmt.Errorf("等待扫描结果超时：%w", lastErr)
+			}
 			return nil, errors.New("等待扫描结果超时")
 		case <-wait.C:
 		}
