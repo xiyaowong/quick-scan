@@ -1,0 +1,86 @@
+name: Release
+
+# 推 vX.Y.Z tag 时发版。版本号以 app.rc 为准：tag 和它不一致直接失败，不发错版本。
+# 也可以手动触发，用 actions 页面上的 tag 输入重发或补发。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 要重发的 tag，例如 v0.2.0
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 手动触发时默认检出的是分支，会拿到 app.rc 的最新版本；必须对准 tag。
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: 校验 tag 与 app.rc 版本一致
+        shell: pwsh
+        env:
+          REF_NAME: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          $ver = (((Select-String -Path app.rc -Pattern 'PRODUCTVERSION\s+([\d,]+)').Matches[0].Groups[1].Value -split ',')[0..2] -join '.')
+          if ($ver -ne $env:REF_NAME.TrimStart('v')) {
+            throw "tag $env:REF_NAME 与 app.rc 的版本 $ver 不一致"
+          }
+          "VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: extractions/setup-just@v3
+
+      # windows-latest 自带 NSIS、LLVM（clang）和 Rust，缺的只有 windres，
+      # 它只在 MinGW 里。choco 把 bin 写进机器 PATH，但已经启动的 runner
+      # 不会重读，所以显式加到 GITHUB_PATH。
+      - name: 安装 MinGW
+        shell: pwsh
+        run: |
+          choco install mingw --no-progress -y
+          "C:\ProgramData\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      # ocrbridge 全量编译要三四分钟，缓存命中后只剩链接。
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ocrbridge
+
+      - name: 单测
+        shell: pwsh
+        run: |
+          $env:CGO_ENABLED = '0'
+          go test ./...
+
+      - name: 编译并打包
+        shell: pwsh
+        run: |
+          just installer
+          just package
+
+      - name: 发布
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 依赖 $LASTEXITCODE 判断，别让原生命令的非零退出被当成脚本失败。
+          $ErrorActionPreference = 'Continue'
+          $tag = "v$env:VERSION"
+          gh release view $tag --json tagName *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --verify-tag --title "快速扫描 $env:VERSION" --generate-notes
+            if ($LASTEXITCODE -ne 0) { throw "创建 release $tag 失败" }
+          }
+          gh release upload $tag `
+            "dist\quick-scan-$env:VERSION-setup.exe" `
+            "dist\quick-scan-$env:VERSION-win64.zip" --clobber
+          if ($LASTEXITCODE -ne 0) { throw "上传产物失败" }

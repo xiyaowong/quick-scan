@@ -44,14 +44,22 @@ icon:
 #   子窗口；mygo 自定义标题栏的按钮/顶边正是这种子窗口，于是启动报
 #   "cannot create the window controls of a window with a hidden title bar"，贴边缩放和
 #   贴靠布局也一起失效。Windows 8（6.2）起才支持，这里取 10.0 与内部链接器对齐。
+# cgo：CC 会原样交给 Go，路径带空格和额外参数都要写在这里。
+# -fuse-ld=lld：不让 clang 落到 MSVC 的 link.exe 上（它读不了 Go 给的 .ld
+#   响应文件，报 LNK1107）；必须放在 CC 里，Go 用 `clang -Wl,--version` 探测
+#   是不是 LLD，探测不到就会继续传那个 .ld 脚本（实测 CI 上如此）。
+#   引号只包 exe 本身，参数留在外面。
 ui: icon ocr
     $env:CGO_ENABLED = '1'; \
     $env:GOARCH = 'amd64'; \
     $env:CGO_LDFLAGS = '-Xlinker /subsystem:console,10.0'; \
+    $ver = (((Select-String -Path app.rc -Pattern 'PRODUCTVERSION\s+([\d,]+)').Matches[0].Groups[1].Value -split ',')[0..2] -join '.'); \
     if (-not $env:CC) { $env:CC = if (Get-Command clang -ErrorAction SilentlyContinue) { (Get-Command clang).Source } else { 'D:\Scoop\apps\llvm\current\bin\clang.exe' } }; \
-    go build -trimpath -tags mygo_noinspector -ldflags '-s -w' -o quick-scan.exe ./cmd/quick-scan; \
+    if ($env:CC -match '\s' -and $env:CC -notmatch '^"') { $env:CC = '"' + $env:CC + '"' }; \
+    if ($env:CC -notmatch 'fuse-ld') { $env:CC = $env:CC + ' -fuse-ld=lld' }; \
+    go build -trimpath -tags mygo_noinspector -ldflags "-s -w -X quick-scan/internal/update.Version=$ver" -o quick-scan.exe ./cmd/quick-scan; \
     if ($LASTEXITCODE -ne 0) { throw '主程序编译失败' }; \
-    Write-Host '[ui] quick-scan.exe 完成'
+    Write-Host "[ui] quick-scan.exe 完成（$ver）"
 
 # 全量构建
 build: ui
@@ -75,7 +83,9 @@ test:
     if ($LASTEXITCODE -ne 0) { throw '测试失败' }
 
 # 跑主程序（会真的用 mDNS 找设备并连打印机）
+# QUICK_SCAN_NO_UPDATE：这里是仓库里直接跑的开发版，别让它去下载、安装线上版本。
 run: ui
+    $env:QUICK_SCAN_NO_UPDATE = '1'; \
     .\quick-scan.exe
 
 # ── 发布产物（dist\quick-scan-<版本>-win64.zip，内含单个 exe）──
@@ -98,6 +108,7 @@ package: build
 # 安装包只打根目录的 quick-scan.exe（upx 的压缩版在 dist\，不能进安装包）
 installer: build
     if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) { throw '未找到 makensis：scoop install nsis' }; \
+    New-Item -ItemType Directory -Force dist | Out-Null; \
     $ver = (((Select-String -Path app.rc -Pattern 'PRODUCTVERSION\s+([\d,]+)').Matches[0].Groups[1].Value -split ',')[0..2] -join '.'); \
     makensis /V2 /DVERSION=$ver installer.nsi; \
     if ($LASTEXITCODE -ne 0) { throw 'makensis 编安装包失败' }; \

@@ -54,8 +54,11 @@ VIAddVersionKey /LANG=2052 "LegalCopyright"  ""
 !insertmacro MUI_LANGUAGE "SimpChinese"
 
 ; 按窗口标题找，安装程序带「安装」「卸载」后缀不会误中。
+; 自动更新走 /S：调用方已经把正在运行的 exe 让开，这里再弹框没人点，
+; 安装会永远卡住。
 !macro CheckAppRunning UN
 Function ${UN}CheckAppRunning
+  IfSilent done
   loop:
     FindWindow $0 "" "${APP_NAME}"
     StrCmp $0 0 done
@@ -83,11 +86,16 @@ FunctionEnd
 Section "主程序" SecApp
   SectionIn RO
   SetOutPath "$INSTDIR"
+  ; 静默安装时调用方已把旧 exe 改名让开；这里再删一次兜住其它残留。
+  Delete "$INSTDIR\${APP_EXE}"
   File "quick-scan.exe"
   WriteUninstaller "$INSTDIR\uninst.exe"
 
+  ; 升级不给没要过的人凭空加一个开始菜单项。
+  IfSilent skipShortcut
   CreateDirectory "$SMPROGRAMS"
   CreateShortcut "$SMPROGRAMS\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\${APP_EXE}" 0
+  skipShortcut:
 
   ; 唯一的注册表写入，卸载时整键删除。
   WriteRegStr   HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "DisplayName"     "${APP_NAME}"
@@ -105,7 +113,10 @@ Section "主程序" SecApp
 SectionEnd
 
 Section "桌面快捷方式" SecDesktop
+  ; 升级不给没要过的人凭空加一个桌面图标。
+  IfSilent done
   CreateShortcut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\${APP_EXE}" 0
+  done:
 SectionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN

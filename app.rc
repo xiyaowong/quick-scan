@@ -1,5 +1,7 @@
 ﻿// Windows 资源：exe 图标 + 版本信息。
 // 由 justfile 的 icon 配方用 windres 编成 rsrc_windows_amd64.syso（Go 自动链接）。
+// 版本号只改下面四行（FILEVERSION、PRODUCTVERSION、FileVersion、ProductVersion）；
+// justfile 的构建和安装包都从这里读，发版流程见 RELEASE.md。
 // 图标 ID 固定 1：资源管理器/任务栏取第一个图标组作为 exe 显示图标。
 //
 // 坑：本文件必须存成 UTF-8 **带 BOM**。rc.exe 对没有 BOM 的文件按系统

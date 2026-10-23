@@ -20,6 +20,7 @@ func (a *app) startup() {
 	}
 	a.startDetect()
 	a.startStatusPoll()
+	a.startUpdateCheck()
 }
 
 // netScanHint 让用户知道还在找，否则界面看起来像卡住了。

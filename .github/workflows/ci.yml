@@ -1,0 +1,56 @@
+name: CI
+
+# 每次改动都验一遍：单测 + 真实编译 + 安装包。release.yml 只在发版时跑，
+# 构建问题要在这里暴露，而不是等到发版那天。
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: extractions/setup-just@v3
+
+      # windows-latest 自带 NSIS、LLVM（clang）和 Rust，缺的只有 windres。
+      # choco 写进机器 PATH 之后已启动的 runner 不重读，显式补一次。
+      - name: 安装 MinGW
+        shell: pwsh
+        run: |
+          choco install mingw --no-progress -y
+          "C:\ProgramData\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      # ocrbridge 全量编译要三四分钟，缓存命中后只剩链接。
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ocrbridge
+
+      - name: 单测
+        shell: pwsh
+        run: |
+          $env:CGO_ENABLED = '0'
+          go test ./...
+
+      - name: 编译并打包
+        shell: pwsh
+        run: |
+          just installer
+          just package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quick-scan-installer
+          path: |
+            dist/*-setup.exe
+            dist/*-win64.zip
