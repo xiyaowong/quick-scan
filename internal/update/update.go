@@ -213,8 +213,8 @@ func Installable() bool {
 	return true
 }
 
-// InstallDir 实际安装目录：用户当初可能改过，安装包登记在卸载项里。
-// 升级必须装回这里，不能用默认路径。
+// InstallDir 实际安装目录：用户当初可能改过，安装包登记在卸载项里，
+// 升级必须装回这里。
 func InstallDir() string { return installedDir() }
 
 // Run 静默安装到 dir：不带任何界面，装完即止。
@@ -261,7 +261,7 @@ func CleanLeftovers() {
 	}
 }
 
-// Dir 程序所在目录，免安装版也适用。
+// Dir 程序所在目录。
 func Dir() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -270,7 +270,7 @@ func Dir() (string, error) {
 	return filepath.Dir(exe), nil
 }
 
-// RemoveStale 删掉除 keep 以外的安装包：升过一次之后旧的没用了。
+// RemoveStale 删掉除 keep 以外的安装包。
 func RemoveStale(keep string) {
 	dir, err := cacheDir()
 	if err != nil {
