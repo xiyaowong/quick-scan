@@ -57,7 +57,9 @@ ui: icon ocr
     if (-not $env:CC) { $env:CC = if (Get-Command clang -ErrorAction SilentlyContinue) { (Get-Command clang).Source } else { 'D:\Scoop\apps\llvm\current\bin\clang.exe' } }; \
     if ($env:CC -match '\s' -and $env:CC -notmatch '^"') { $env:CC = '"' + $env:CC + '"' }; \
     if ($env:CC -notmatch 'fuse-ld') { $env:CC = $env:CC + ' -fuse-ld=lld' }; \
-    go build -trimpath -tags mygo_noinspector -ldflags "-s -w -X quick-scan/internal/update.Version=$ver" -o quick-scan.exe ./cmd/quick-scan; \
+    $mirror = ''; \
+    if ($env:QUICK_SCAN_MIRROR) { $mirror = " -X quick-scan/internal/update.Mirror=$env:QUICK_SCAN_MIRROR" }; \
+    go build -trimpath -tags mygo_noinspector -ldflags "-s -w -X quick-scan/internal/update.Version=$ver$mirror" -o quick-scan.exe ./cmd/quick-scan; \
     if ($LASTEXITCODE -ne 0) { throw '主程序编译失败' }; \
     Write-Host "[ui] quick-scan.exe 完成（$ver）"
 
