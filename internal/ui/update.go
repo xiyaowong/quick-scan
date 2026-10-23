@@ -20,7 +20,7 @@ func (a *app) startUpdateCheck() {
 	if Win == nil {
 		return
 	}
-	// 上次让位留下的旧 exe 现在不占用了，顺手清掉。
+	// 上次让位留下的旧 exe 现在不占用了。
 	update.CleanLeftovers()
 	if updatesDisabled() || update.Version == "" || !update.Installable() {
 		return

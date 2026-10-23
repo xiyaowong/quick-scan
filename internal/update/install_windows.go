@@ -6,8 +6,8 @@ import (
 )
 
 // 安装目录从卸载项里读：安装程序登记为 InstallLocation，
-// 一起登记了 QuietUninstallString 才说明这个安装包支持静默安装。
-// 读不到就是免安装版（或仓库里直接跑的），不参与自动更新。
+// 一起登记了 QuietUninstallString 才说明这份安装能静默升级。
+// 读不到就是免安装版或仓库里直接跑的，不参与自动更新。
 const uninstallKey = `Software\Microsoft\Windows\CurrentVersion\Uninstall\quick-scan`
 
 var (
