@@ -13,13 +13,11 @@ import (
 // 不建配置目录、不写注册表。
 const stateFileName = "update.json"
 
-// 测试里替换成临时目录。
 var stateDir = func() string { return platform.CacheDir() }
 
 type state struct {
-	CheckedAt int64 `json:"checkedAt"`
-	// 下载好、等着装的新版本。
-	Pending *pendingRelease `json:"pending,omitempty"`
+	CheckedAt int64           `json:"checkedAt"`
+	Pending   *pendingRelease `json:"pending,omitempty"`
 }
 
 type pendingRelease struct {
