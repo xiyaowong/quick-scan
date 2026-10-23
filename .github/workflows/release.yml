@@ -63,20 +63,20 @@ jobs:
           $env:CGO_ENABLED = '0'
           go test ./...
 
-      # 下载镜像地址不写进仓库：仓库变量 QUICK_SCAN_MIRROR 设了才注入，
+      # 下载镜像地址不写进仓库：仓库 secret QUICK_SCAN_MIRROR 设了才注入，
       # 没设就是纯直连 GitHub（本地构建同样行为）。
       # 两个 step 分开：合在一起时 just package 的成功会盖掉 just installer
       # 的失败，step 照样报绿，安装包没编出来也没人知道。
       - name: 编安装包
         shell: pwsh
         env:
-          QUICK_SCAN_MIRROR: ${{ vars.QUICK_SCAN_MIRROR }}
+          QUICK_SCAN_MIRROR: ${{ secrets.QUICK_SCAN_MIRROR }}
         run: just installer
 
       - name: 打包免安装版
         shell: pwsh
         env:
-          QUICK_SCAN_MIRROR: ${{ vars.QUICK_SCAN_MIRROR }}
+          QUICK_SCAN_MIRROR: ${{ secrets.QUICK_SCAN_MIRROR }}
         run: just package
 
       - name: 发布
