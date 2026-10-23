@@ -1,7 +1,7 @@
 name: CI
 
-# 每次改动都验一遍：单测 + 真实编译 + 安装包。
-# release.yml 只在发版时跑，构建问题要在这里就暴露，而不是等到发版那天。
+# 每次改动都验一遍：单测 + 真实编译 + 安装包。release.yml 只在发版时跑，
+# 构建问题要在这里暴露，而不是等到发版那天。
 on:
   pull_request:
   push:
@@ -31,8 +31,7 @@ jobs:
           choco install mingw --no-progress -y
           "C:\ProgramData\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      # ocrbridge 全量编译要三四分钟，缓存命中后只剩链接。键按 Cargo.lock 和
-      # 工具链算，Cargo.toml 或源码改动不会让缓存失效（增量重编即可）。
+      # ocrbridge 全量编译要三四分钟，缓存命中后只剩链接。
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ocrbridge
