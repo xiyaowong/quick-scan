@@ -42,6 +42,19 @@ var (
 	downloadAllowed = httpsURL
 )
 
+// Mirror 是前缀式下载代理（<代理>/https://github.com/...），国内直连 GitHub
+// 慢或不通时走它。地址不进仓库：构建时从环境变量 QUICK_SCAN_MIRROR 用 -X 注入。
+// 代理能改内容，所以只认带摘要的资产，没摘要就不走代理。
+var Mirror string
+
+func mirrorPrefix() string {
+	m := strings.TrimSpace(Mirror)
+	if m == "" {
+		return ""
+	}
+	return strings.TrimRight(m, "/") + "/"
+}
+
 // Release 是比当前版本新的一次发布。
 type Release struct {
 	Version string
@@ -62,13 +75,24 @@ type apiRelease struct {
 }
 
 // Check 查询 GitHub 上最新发布；没有比当前新的版本返回 nil。
+// 直连查不到就问一次镜像，国内网络常常只有一边通。
 func Check(ctx context.Context) (*Release, error) {
+	rel, err := check(ctx, apiURL)
+	if m := mirrorPrefix(); err == nil || m == "" {
+		return rel, err
+	} else if mrel, merr := check(ctx, m+apiURL); merr == nil {
+		return mrel, nil
+	}
+	return nil, err
+}
+
+func check(ctx context.Context, url string) (*Release, error) {
 	if Version == "" {
 		return nil, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -104,16 +128,37 @@ func Check(ctx context.Context) (*Release, error) {
 	return nil, nil
 }
 
-// Download 下载安装包到本地缓存并校验。先写 .part 再改名：
-// 中断只留下 .part，不会被误当成完整文件。
+// Download 下载安装包到本地缓存并校验。直连失败再走一次镜像：
+// 两边都不通才报错，错误带上两边的原因。
 func (r *Release) Download(ctx context.Context, dst string) error {
-	if !downloadAllowed(r.URL) {
+	err := r.download(ctx, dst, r.URL)
+	if err == nil || !r.mirrored() {
+		return err
+	}
+	if merr := r.download(ctx, dst, r.mirrorURL()); merr != nil {
+		return fmt.Errorf("直连下载失败（%w），镜像也失败（%v）", err, merr)
+	}
+	return nil
+}
+
+// mirrored 只有地址和摘要都齐全时才走代理：代理能改内容，没摘要就验不出真假。
+func (r *Release) mirrored() bool {
+	m := mirrorPrefix()
+	return m != "" && r.SHA256 != "" && httpsURL(r.URL) && downloadAllowed(m+r.URL)
+}
+
+func (r *Release) mirrorURL() string { return mirrorPrefix() + r.URL }
+
+// download 从 url 取一份完整且校验通过的文件。先写 .part 再改名：
+// 中断只留下 .part，不会被误当成完整文件。
+func (r *Release) download(ctx context.Context, dst, from string) error {
+	if !downloadAllowed(from) {
 		return errors.New("更新地址不安全")
 	}
 	ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, from, nil)
 	if err != nil {
 		return err
 	}
