@@ -33,7 +33,7 @@ VIAddVersionKey /LANG=2052 "FileDescription" "${APP_NAME} 安装程序"
 VIAddVersionKey /LANG=2052 "FileVersion"     "${VERSION}"
 VIAddVersionKey /LANG=2052 "ProductVersion"  "${VERSION}"
 VIAddVersionKey /LANG=2052 "OriginalFilename" "${APP_ID}-${VERSION}-setup.exe"
-VIAddVersionKey /LANG=2052 "LegalCopyright"  ""
+VIAddVersionKey /LANG=2052 "LegalCopyright"  "xiyaowong · MIT"
 
 !define MUI_ICON   "app.ico"
 !define MUI_UNICON "app.ico"

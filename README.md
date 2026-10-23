@@ -37,3 +37,8 @@ just test       # 单测，不需要真机
 just run        # 构建并启动
 just installer  # 产物：dist\quick-scan-<版本>-setup.exe
 ```
+
+## 版权
+
+xiyaowong · MIT
+
