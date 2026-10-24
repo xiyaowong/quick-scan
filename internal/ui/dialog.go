@@ -338,6 +338,40 @@ func (a *app) rotatePage(id uint64) {
 	}
 }
 
+// resetPageRot 把一页转回扫描时的方向；缩略图直接退回未旋转的那份。
+func (a *app) resetPageRot(id uint64) {
+	for i := range a.pages {
+		if a.pages[i].ID != id {
+			continue
+		}
+		p := &a.pages[i]
+		if p.Rot%360 == 0 {
+			return
+		}
+		p.Rot = 0
+		p.ThumbRot = nil
+		if a.lightbox != nil && a.lightbox.Index == i {
+			a.lightbox.Rot = 0
+		}
+		a.saveSession()
+		return
+	}
+}
+
+// rotateAll 把每一页都转 90°：一次转一批比逐页点省事。
+func (a *app) rotateAll() {
+	for _, p := range a.pages {
+		a.rotatePage(p.ID)
+	}
+}
+
+// resetAllRot 把所有页面转回扫描时的方向。
+func (a *app) resetAllRot() {
+	for _, p := range a.pages {
+		a.resetPageRot(p.ID)
+	}
+}
+
 func (a *app) deletePage(id uint64) {
 	idx := -1
 	for i := range a.pages {

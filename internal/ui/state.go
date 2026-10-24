@@ -434,6 +434,16 @@ func (a *app) selectAll() {
 	}
 }
 
+// anyRotated 有没有页面转过：决定「复原全部」出不出头。
+func (a *app) anyRotated() bool {
+	for i := range a.pages {
+		if a.pages[i].Rot%360 != 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // selectedPages 按页面顺序返回，导出的页序才和界面上看到的一致。
 func (a *app) selectedPages() []Page {
 	if len(a.selected) == 0 {

@@ -28,6 +28,8 @@ var (
 		`<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>`)
 	icoRotate = strokeIcon(
 		`<path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 3.5V9H15"/>`)
+	icoUndo = strokeIcon(
+		`<path d="M3.5 10.5 8 6"/><path d="M3.5 10.5 8 15"/><path d="M3.5 10.5h11a6 6 0 0 1 0 12H10"/>`)
 	icoTrash = strokeIcon(
 		`<path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/>` +
 			`<path d="M6.5 7 7.5 20h9L17.5 7"/><path d="M9 7V4h6v3"/>`)

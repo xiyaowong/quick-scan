@@ -106,6 +106,79 @@ func TestClickThumbnailOpensLightbox(t *testing.T) {
 	}
 }
 
+// 一键复原单页：转过去再复原，方向和缩略图都要回到扫描时的样子。
+func TestResetPageRotation(t *testing.T) {
+	a := newApp()
+	src := image.NewRGBA(image.Rect(0, 0, 170, 240))
+	a.pages = []Page{{ID: 1, Thumb: ui.NewBitmap(src), ThumbSrc: src, FullPath: "不存在.jpg"}}
+
+	a.rotatePage(1)
+	if a.pages[0].Rot != 90 {
+		t.Fatalf("Rot=%d", a.pages[0].Rot)
+	}
+	a.resetPageRot(1)
+	if a.pages[0].Rot != 0 || a.pages[0].ThumbRot != nil {
+		t.Fatalf("没有复原：Rot=%d ThumbRot=%v", a.pages[0].Rot, a.pages[0].ThumbRot)
+	}
+}
+
+// 转过的页面才有「复原」：卡片按钮和右键菜单都不多不少。
+func TestResetPageRotationOnlyWhenRotated(t *testing.T) {
+	a := newApp()
+	src := image.NewRGBA(image.Rect(0, 0, 170, 240))
+	a.pages = []Page{{ID: 1, Thumb: ui.NewBitmap(src), ThumbSrc: src, FullPath: "不存在.jpg"}}
+	tt := ui.NewTester(a.view, 1200, 800)
+
+	if err := tt.Click("复原第 1 页"); err == nil {
+		t.Fatal("没转过的页面不该出现复原按钮")
+	}
+	if err := tt.RightClick("01"); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(tt.Menu(), "复原旋转") {
+		t.Fatalf("没转过的页面不该有复原项：%v", tt.Menu())
+	}
+
+	a.rotatePage(1)
+	tt.Frame()
+	if err := tt.Click("复原第 1 页"); err != nil {
+		t.Fatal(err)
+	}
+	if a.pages[0].Rot != 0 {
+		t.Fatalf("Rot=%d", a.pages[0].Rot)
+	}
+}
+
+// 一键旋转所有页面、一键复原：页头入口，多页时才出现；没转过时没有「复原全部」。
+func TestRotateAllPages(t *testing.T) {
+	a := newApp()
+	addPages(a, 3)
+	tt := ui.NewTester(a.view, 1200, 800)
+
+	if err := tt.Click("复原全部"); err == nil {
+		t.Fatal("没转过时不该出现复原全部")
+	}
+	if err := tt.Click("旋转全部"); err != nil {
+		t.Fatal(err)
+	}
+	for i, p := range a.pages {
+		if p.Rot != 90 {
+			t.Fatalf("第 %d 页 Rot=%d", i+1, p.Rot)
+		}
+	}
+	if !a.anyRotated() {
+		t.Fatal("anyRotated 应为 true")
+	}
+	if err := tt.Click("复原全部"); err != nil {
+		t.Fatal(err)
+	}
+	for i, p := range a.pages {
+		if p.Rot != 0 {
+			t.Fatalf("复原后第 %d 页 Rot=%d", i+1, p.Rot)
+		}
+	}
+}
+
 func addPages(a *app, n int) {
 	img := ui.NewBitmap(image.NewRGBA(image.Rect(0, 0, 40, 56)))
 	for i := range n {

@@ -70,6 +70,12 @@ func (a *app) pagesPanel(c *ui.Context) {
 			} else if len(a.pages) > 1 && textLink(c, "全选").Clicked() {
 				a.selectAll()
 			}
+			if len(a.pages) > 1 && textLink(c, "旋转全部").Clicked() {
+				a.rotateAll()
+			}
+			if len(a.pages) > 0 && a.anyRotated() && textLink(c, "复原全部").Clicked() {
+				a.resetAllRot()
+			}
 			countBadge(c, len(a.pages))
 		})
 
@@ -156,6 +162,9 @@ func (a *app) pageCell(c *ui.Context, i int) {
 		ui.Row(c).Height(42).Padding(0, 8, 0, 8).AlignItems(ui.Center).Gap(2).Children(func() {
 			ui.Icon(c, icoGrip).FontSize(11).TextColor(colFaint).Tooltip("按住拖动排序")
 			ui.Row(c).Grow(1)
+			if p.Rot%360 != 0 && iconButton(c, icoUndo, "复原旋转", 30).Label("复原第 "+strconv.Itoa(i+1)+" 页").Clicked() {
+				a.resetPageRot(p.ID)
+			}
 			if iconButton(c, icoRotate, "旋转 90°", 30).Label("旋转第 " + strconv.Itoa(i+1) + " 页").Clicked() {
 				a.rotatePage(p.ID)
 			}
@@ -188,6 +197,9 @@ func (a *app) pageMenu(m *ui.Menu, i int, id uint64) {
 	}
 	if m.Item("旋转 90°").Chosen() {
 		a.rotatePage(id)
+	}
+	if a.pages[i].Rot%360 != 0 && m.Item("复原旋转").Chosen() {
+		a.resetPageRot(id)
 	}
 	if m.Item("导出此页").Chosen() {
 		a.openExport(i)
@@ -738,6 +750,9 @@ func (a *app) lightboxOverlay(c *ui.Context) {
 						return
 					}
 				} else {
+					if a.pages[lb.Index].Rot%360 != 0 && glassButton(c, "复原", icoUndo, false).Clicked() {
+						a.resetPageRot(a.pages[lb.Index].ID)
+					}
 					if glassButton(c, "旋转", icoRotate, false).Clicked() {
 						a.rotatePage(a.pages[lb.Index].ID)
 					}
