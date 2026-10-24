@@ -70,11 +70,11 @@ func (a *app) pagesPanel(c *ui.Context) {
 			} else if len(a.pages) > 1 && textLink(c, "全选").Clicked() {
 				a.selectAll()
 			}
-			if len(a.pages) > 1 && textLink(c, "旋转全部").Clicked() {
-				a.rotateAll()
-			}
 			if len(a.pages) > 0 && a.anyRotated() && textLink(c, "复原全部").Clicked() {
 				a.resetAllRot()
+			}
+			if len(a.pages) > 1 && textLink(c, "旋转全部").Clicked() {
+				a.rotateAll()
 			}
 			countBadge(c, len(a.pages))
 		})
