@@ -21,7 +21,7 @@ func TestDeviceCacheRoundTrip(t *testing.T) {
 	withTempCache(t)
 	devs := []DeviceInfo{
 		{
-			Name: "HP Laser MFP 116w", IP: "192.168.3.111", Port: 80, Path: "eSCL",
+			Name: "Example MFP 100", IP: "192.0.2.10", Port: 80, Path: "eSCL",
 			Online: true, Colors: []string{"color", "gray", "bw"},
 			Resolutions: []float32{100, 200, 300}, Sizes: []string{"a4", "a5", "letter"},
 			Intents: []string{"Document", "Photo"}, Feeder: false,

@@ -14,7 +14,7 @@ import (
 func onlineApp(feeder bool) *app {
 	a := newApp()
 	a.devices = []scanner.DeviceInfo{{
-		Idx: 1, Name: "HP Laser MFP 116w", IP: "192.168.3.111", Port: 80, Path: "eSCL",
+		Idx: 1, Name: "Example MFP 100", IP: "192.0.2.10", Port: 80, Path: "eSCL",
 		Online: true, Feeder: feeder,
 	}}
 	a.devSel = 0
@@ -107,7 +107,7 @@ func TestStatusTiedToDevice(t *testing.T) {
 	}
 
 	a.devices = append(a.devices, scanner.DeviceInfo{
-		Idx: 2, Name: "Canon", IP: "192.168.3.112", Port: 80, Path: "eSCL", Online: true,
+		Idx: 2, Name: "Canon", IP: "192.0.2.11", Port: 80, Path: "eSCL", Online: true,
 	})
 	a.devSel = 1
 	a.refreshState()

@@ -29,7 +29,7 @@ func TestStartStatusPollIsIdempotent(t *testing.T) {
 func TestStatusResultDiscardedForOtherDevice(t *testing.T) {
 	a := onlineApp(false)
 	a.devices = append(a.devices, scanner.DeviceInfo{
-		Idx: 2, Name: "Canon", IP: "192.168.3.112", Port: 80, Path: "eSCL", Online: true,
+		Idx: 2, Name: "Canon", IP: "192.0.2.11", Port: 80, Path: "eSCL", Online: true,
 	})
 	a.devSel = 1
 	a.refreshState()
@@ -52,7 +52,7 @@ func TestStatusResultDiscardedForOtherDevice(t *testing.T) {
 func TestStatusMissMarksDeviceOffline(t *testing.T) {
 	a := onlineApp(false)
 	a.devStatus, a.devStatusIdx = scanner.Status{State: "idle"}, 1
-	unreachable := fmt.Errorf("%w：dial tcp 192.168.3.111: i/o timeout", scanner.ErrUnreachable)
+	unreachable := fmt.Errorf("%w：dial tcp 192.0.2.10: i/o timeout", scanner.ErrUnreachable)
 
 	a.applyStatusResult(1, scanner.Status{}, unreachable)
 	if a.devState != DevOnline || a.scanIssue().Text != "" {

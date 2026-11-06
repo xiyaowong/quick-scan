@@ -64,6 +64,7 @@ func (a *app) startDetect() {
 			if len(devs) == 0 && !a.anyDeviceOnline() {
 				a.startSubnetScan(mdnsErr)
 			}
+			a.pruneStale()
 		})
 	}()
 }
@@ -112,6 +113,7 @@ func (a *app) startSubnetScan(mdnsErr error) {
 		})
 		Win.Update(func() {
 			a.netScanning = false
+			a.pruneStale()
 			if a.hint == netScanHint {
 				a.setHint("")
 			}
@@ -131,6 +133,7 @@ func (a *app) addDiscovered(d scanner.DeviceInfo) {
 		return
 	}
 	if i := a.indexByKey(key); i >= 0 {
+		a.confirmed[a.devices[i].Idx] = true
 		if d.Name != "" {
 			a.devices[i].Name = d.Name
 		}
@@ -139,6 +142,7 @@ func (a *app) addDiscovered(d scanner.DeviceInfo) {
 	d.Idx = a.allocDevIdx()
 	d.Online = false
 	a.devices = append(a.devices, d)
+	a.confirmed[d.Idx] = true
 	if a.hint == netScanHint {
 		a.setHint("")
 	}
@@ -169,6 +173,7 @@ func (a *app) resetDevices(devs []scanner.DeviceInfo) {
 	a.probeSeq++
 	a.devices = nil
 	a.probed = map[int]bool{}
+	a.confirmed = map[int]bool{} // Idx 从头分配，旧确认不能留给新设备
 	a.autoQueue = nil
 	a.pendingProbe = false
 	a.probing = false
@@ -234,6 +239,7 @@ func (a *app) mergeDetected(found []scanner.DeviceInfo) {
 		}
 		seen[key] = true
 		if i, ok := byKey[key]; ok {
+			a.confirmed[a.devices[i].Idx] = true
 			if d.Name != "" {
 				a.devices[i].Name = d.Name // mDNS 的 ty 比旧缓存可靠
 			}
@@ -242,6 +248,7 @@ func (a *app) mergeDetected(found []scanner.DeviceInfo) {
 		d.Idx = a.allocDevIdx()
 		d.Online = false
 		a.devices = append(a.devices, d)
+		a.confirmed[d.Idx] = true
 		byKey[key] = len(a.devices) - 1
 		added = append(added, d.Idx)
 	}
@@ -321,6 +328,70 @@ func (a *app) probeFirstOnline() {
 	a.requestProbe(a.devices[0].Idx, true)
 }
 
+// 探测失败且本轮发现没再看到它：这条缓存已经作废，删掉而不是一直标红。
+// 发现还在跑时不动手——设备可能只是还没被 mDNS 报上来。
+func (a *app) dropStale(idx int) bool {
+	if a.detecting || a.netScanning || a.confirmed[idx] {
+		return false
+	}
+	cur := a.listIndex(idx)
+	if cur < 0 {
+		return false
+	}
+	selIdx := -1
+	if d := a.current(); d != nil {
+		selIdx = d.Idx
+	}
+	a.devices = append(a.devices[:cur], a.devices[cur+1:]...)
+	delete(a.probed, idx)
+	delete(a.confirmed, idx)
+	if len(a.autoQueue) > 0 {
+		q := a.autoQueue[:0]
+		for _, v := range a.autoQueue {
+			if v != idx {
+				q = append(q, v)
+			}
+		}
+		a.autoQueue = q
+	}
+	switch {
+	case len(a.devices) == 0:
+		a.devSel = 0
+	case selIdx == idx:
+		a.devSel = min(cur, len(a.devices)-1)
+	default:
+		if i := a.listIndex(selIdx); i >= 0 {
+			a.devSel = i
+		}
+	}
+	if len(a.devices) > 0 && a.devSel >= len(a.devices) {
+		a.devSel = len(a.devices) - 1 // 删的是末尾那台时，selIdx 可能已经越界
+	}
+	a.refreshState()
+	if len(a.devices) == 0 {
+		a.setHint(noDeviceHint)
+		scanner.ClearCache() // SaveCache 不用空名单覆盖旧文件
+		return true
+	}
+	a.saveCache()
+	return true
+}
+
+// pruneStale 在发现结束后补一次清理：探测已经失败、本轮没看到、也不在探测中的条目。
+// 探测失败的时机可能早于发现结束，那条路径会跳过；这里把漏掉的补齐。
+func (a *app) pruneStale() {
+	if a.detecting || a.netScanning {
+		return
+	}
+	for i := len(a.devices) - 1; i >= 0; i-- {
+		d := a.devices[i]
+		if a.confirmed[d.Idx] || !a.probed[d.Idx] || d.Online || d.Idx == a.probingIdx {
+			continue
+		}
+		a.dropStale(d.Idx)
+	}
+}
+
 // auto=true 表示接力，用户手动选择后作废。
 func (a *app) requestProbe(idx int, auto bool) {
 	if Win == nil { // 单元测试/无窗口环境：不发起真实网络探测
@@ -370,6 +441,10 @@ func (a *app) requestProbe(idx int, auto bool) {
 			if !ok {
 				// 明确失败：能力留空，refreshState 会标红；接力中提示会被下一次覆盖。
 				dev.Online = false
+				if a.dropStale(idx) {
+					a.advanceProbe(true)
+					return
+				}
 				a.setHint(err.Error())
 			}
 			dev.Idx = idx
@@ -463,6 +538,9 @@ func (a *app) sortDevices() {
 
 func (a *app) applyDetect(devs []scanner.DeviceInfo) {
 	a.resetDevices(devs)
+	for _, d := range a.devices {
+		a.confirmed[d.Idx] = true // 都是本轮发现报上来的
+	}
 	a.refreshState()
 }
 

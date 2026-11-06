@@ -11,7 +11,7 @@ func TestAddDiscoveredMergesByKey(t *testing.T) {
 	withTempCache(t)
 	a := newApp()
 
-	d := scanner.DeviceInfo{Name: "HP Laser MFP 136nw", IP: "192.168.1.10", Port: 80, Path: "eSCL"}
+	d := scanner.DeviceInfo{Name: "Example MFP 100", IP: "192.168.1.10", Port: 80, Path: "eSCL"}
 	a.addDiscovered(d)
 	a.addDiscovered(d) // 同一台又报了一次
 

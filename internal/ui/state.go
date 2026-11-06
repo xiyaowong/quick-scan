@@ -230,9 +230,12 @@ type app struct {
 	userPicked   bool
 	pendingProbe bool         // 探测期间又切了设备：上一个回来后补探
 	probed       map[int]bool // 已探测过的设备（键是 scanner.DeviceInfo.Idx，不是列表下标）
-	detecting    bool
-	netScanning  bool // 正在扫网段兜底
-	devGrid      ui.GridState
+	// confirmed 是本会话发现（mDNS / 网段扫描）真正看到过的设备 Idx。
+	// 探测失败时只有没被确认过的条目才是作废缓存。
+	confirmed   map[int]bool
+	detecting   bool
+	netScanning bool // 正在扫网段兜底
+	devGrid     ui.GridState
 	// hint 是状态栏右侧唯一的一行提示：检测进度、正在连哪台、失败原因。
 	// hintDetail 是它的补充详情（原始错误），鼠标悬停时显示。
 	hint       string
@@ -294,6 +297,7 @@ func newApp() *app {
 		devSel:       0,
 		devState:     DevUnknown,
 		probed:       map[int]bool{},
+		confirmed:    map[int]bool{},
 		size:         SizeA4,
 		dpi:          300,
 		intent:       scanner.IntentDocument,

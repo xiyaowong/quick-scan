@@ -24,7 +24,7 @@ import (
 const capsSample = `<?xml version="1.0" encoding="UTF-8"?>
 <scan:ScannerCapabilities xmlns:scan="http://schemas.hp.com/imaging/escl/2011/05/03" xmlns:pwg="http://www.pwg.org/schemas/2010/12/sm">
   <pwg:Version>2.63</pwg:Version>
-  <pwg:MakeAndModel>HP Laser MFP 136nw</pwg:MakeAndModel>
+  <pwg:MakeAndModel>Example MFP 100</pwg:MakeAndModel>
   <scan:Platen>
     <scan:PlatenInputCaps>
       <scan:MinWidth>2480</scan:MinWidth>
@@ -78,7 +78,7 @@ func TestParseCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if caps.Version != "2.63" || caps.MakeAndModel != "HP Laser MFP 136nw" {
+	if caps.Version != "2.63" || caps.MakeAndModel != "Example MFP 100" {
 		t.Fatalf("header = %q / %q", caps.Version, caps.MakeAndModel)
 	}
 	if caps.ADF == nil {
@@ -183,8 +183,8 @@ func TestBuildScanSettings(t *testing.T) {
 }
 
 func TestDisplayName(t *testing.T) {
-	d := DeviceInfo{Name: "HP Laser MFP 136nw", IP: "192.168.1.20"}
-	if got := d.DisplayName(); got != "HP Laser MFP 136nw (192.168.1.20)" {
+	d := DeviceInfo{Name: "Example MFP 100", IP: "192.168.1.20"}
+	if got := d.DisplayName(); got != "Example MFP 100 (192.168.1.20)" {
 		t.Fatalf("display = %q", got)
 	}
 	if got := (&DeviceInfo{IP: "10.0.0.2"}).DisplayName(); got != "10.0.0.2 (10.0.0.2)" {
@@ -194,37 +194,37 @@ func TestDisplayName(t *testing.T) {
 
 func TestBrowserDevices(t *testing.T) {
 	b := newBrowser()
-	rec := b.record(`HP Laser MFP 116w (5D:DF:A6)._uscan._tcp.local.`)
+	rec := b.record(`Example MFP 100 (AA:BB:CC)._uscan._tcp.local.`)
 	rec.hasPTR, rec.hasSRV = true, true
 	rec.port = 80
-	rec.host = "HP30138B5DDFA6.local."
-	rec.txt["ty"] = "HP Laser MFP 116w"
+	rec.host = "ExampleMFP.local."
+	rec.txt["ty"] = "Example MFP 100"
 	rec.txt["rs"] = "eSCL"
-	b.addrs["hp30138b5ddfa6.local."] = "192.168.3.111"
+	b.addrs["examplemfp.local."] = "192.0.2.10"
 
 	devs := b.devices(context.Background())
 	if len(devs) != 1 {
 		t.Fatalf("devices = %+v", devs)
 	}
 	d := devs[0]
-	if d.Name != "HP Laser MFP 116w" || d.IP != "192.168.3.111" || d.Port != 80 || d.Path != "eSCL" {
+	if d.Name != "Example MFP 100" || d.IP != "192.0.2.10" || d.Port != 80 || d.Path != "eSCL" {
 		t.Fatalf("device = %+v", d)
 	}
-	if got := d.DisplayName(); got != "HP Laser MFP 116w (192.168.3.111)" {
+	if got := d.DisplayName(); got != "Example MFP 100 (192.0.2.10)" {
 		t.Fatalf("display = %q", got)
 	}
 }
 
 func TestShortInstanceName(t *testing.T) {
-	got := shortInstanceName(`HP\ Laser\ MFP\ 116w\ \(5D:DF:A6\)._uscan._tcp.local.`)
-	if got != "HP Laser MFP 116w (5D:DF:A6)" {
+	got := shortInstanceName(`Example\ MFP\ 100\ \(AA:BB:CC\)._uscan._tcp.local.`)
+	if got != "Example MFP 100 (AA:BB:CC)" {
 		t.Fatalf("short name = %q", got)
 	}
 }
 
 func TestParseTXT(t *testing.T) {
-	txt := parseTXT([]string{"ty=HP Laser MFP 116w", "rs=eSCL", "duplex=F"})
-	if txt["ty"] != "HP Laser MFP 116w" || txt["rs"] != "eSCL" {
+	txt := parseTXT([]string{"ty=Example MFP 100", "rs=eSCL", "duplex=F"})
+	if txt["ty"] != "Example MFP 100" || txt["rs"] != "eSCL" {
 		t.Fatalf("txt = %v", txt)
 	}
 }
@@ -314,7 +314,7 @@ func (fs *fakeScanner) device() DeviceInfo {
 	host, portStr, _ := net.SplitHostPort(u.Host)
 	var port int
 	fmt.Sscan(portStr, &port)
-	return DeviceInfo{Name: "HP Laser MFP 136nw", IP: host, Port: port, Path: "eSCL"}
+	return DeviceInfo{Name: "Example MFP 100", IP: host, Port: port, Path: "eSCL"}
 }
 
 func tinyJPEG(t *testing.T) []byte {
@@ -337,7 +337,7 @@ func TestProbeAndScanPlaten(t *testing.T) {
 	if err := Probe(context.Background(), &d); err != nil {
 		t.Fatal(err)
 	}
-	if !d.Online || !d.Feeder || d.Name != "HP Laser MFP 136nw" {
+	if !d.Online || !d.Feeder || d.Name != "Example MFP 100" {
 		t.Fatalf("probe = %+v", d)
 	}
 	if len(d.Colors) != 3 || len(d.Sizes) != 3 || len(d.Resolutions) != 2 || len(d.Intents) != 4 {

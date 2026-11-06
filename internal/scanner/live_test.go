@@ -10,7 +10,7 @@ import (
 // 真机联调（默认跳过）：
 //
 //	SIMPLESCAN_LIVE=1 just test -run TestLiveDiscovery -v        # 只测 mDNS 发现
-//	SIMPLESCAN_LIVE=1 SIMPLESCAN_IP=192.168.3.111 just test -run TestLiveScan -v
+//	SIMPLESCAN_LIVE=1 SIMPLESCAN_IP=192.0.2.10 just test -run TestLiveScan -v
 //
 // 不写死任何地址——地址来自环境变量，仓库里不带用户局域网信息。
 

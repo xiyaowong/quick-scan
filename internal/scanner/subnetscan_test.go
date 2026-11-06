@@ -84,7 +84,7 @@ func TestProbeESCLFindsScanner(t *testing.T) {
 	if !ok {
 		t.Fatal("eSCL 设备没被认出来")
 	}
-	if got.Name != "HP Laser MFP 136nw" || got.IP != d.IP || got.Port != d.Port {
+	if got.Name != "Example MFP 100" || got.IP != d.IP || got.Port != d.Port {
 		t.Fatalf("探测结果 = %+v", got)
 	}
 }

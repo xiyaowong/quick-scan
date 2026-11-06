@@ -8,7 +8,7 @@ import (
 
 // 真机状态联调：
 //
-//	SIMPLESCAN_LIVE=1 SIMPLESCAN_IP=192.168.3.111 just test -run TestLiveStatus -v
+//	SIMPLESCAN_LIVE=1 SIMPLESCAN_IP=192.0.2.10 just test -run TestLiveStatus -v
 func TestLiveStatus(t *testing.T) {
 	liveEnabled(t)
 	ip := os.Getenv("SIMPLESCAN_IP")

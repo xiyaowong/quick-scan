@@ -106,6 +106,12 @@ func SaveCache(devs []DeviceInfo, selected string) {
 	}
 }
 
+// ClearCache 删掉设备记录。名单清空时用它：SaveCache 的空名单保护
+// 是为了「一次失败的发现不抹掉可用设备」，不是让作废条目复活。
+func ClearCache() {
+	_ = os.Remove(cachePath())
+}
+
 func makeCachedDevice(d DeviceInfo) (cachedDevice, bool) {
 	ip, port, path, ok := normalizeEndpoint(d.IP, d.Port, d.Path)
 	if !ok {
