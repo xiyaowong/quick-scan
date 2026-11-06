@@ -438,6 +438,7 @@ type Options struct {
 	Size   string // a4 / a5 / letter
 	Feeder bool
 	Intent string // eSCL Intent；空 = Document
+	Whiten bool   // 纸白归一化；照片不受影响
 }
 
 type ScanSink struct {
@@ -540,6 +541,9 @@ func Scan(ctx context.Context, d *DeviceInfo, opts Options, sink ScanSink) (_ []
 				return nil, fmt.Errorf("黑白转换失败：%w", err)
 			}
 			ext = ".png" // 二值图存 PNG：JPEG 的 DCT 会把纯黑白重新变灰
+		} else if opts.Whiten && !IsPhotoIntent(opts.Intent) {
+			// 设备出的是灰底原图；官方软件默认做背景去除，这里补上同样的白点归一化。
+			data = whitenPage(data)
 		}
 		path := filepath.Join(sink.Dir, fmt.Sprintf("page_%d_%d%s", time.Now().UnixMilli(), i, ext))
 		if err := os.WriteFile(path, data, 0o644); err != nil {
@@ -642,6 +646,12 @@ func scanColor(in *inputCaps, key string) (mode string, bilevel bool) {
 		return pickColorMode(in, ColorModeGray), true
 	}
 	return pickColorMode(in, ColorModeBW), false // 只报了黑白：没有可二值化的来源
+}
+
+// IsPhotoIntent 判断扫描内容是不是照片。照片不做纸白归一化：
+// 白点拉伸会把高光压平，天空、白墙这类大片亮部会被误当成纸底。
+func IsPhotoIntent(intent string) bool {
+	return strings.EqualFold(strings.TrimSpace(intent), "Photo")
 }
 
 // 精确匹配 → Document → 设备第一项。

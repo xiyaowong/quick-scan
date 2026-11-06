@@ -262,6 +262,7 @@ func (a *app) settingsPanel(c *ui.Context) {
 				field(func() { a.dpiField(c) })
 				field(func() { a.intentField(c) })
 				field(func() { a.colorField(c) })
+				field(func() { a.whitenField(c) })
 				field(func() { a.sourceField(c) })
 			})
 
@@ -379,6 +380,26 @@ func (a *app) colorField(c *ui.Context) {
 	if segmented(c, &cur, []string{"彩色", "灰度", "黑白"}, enabled) {
 		a.color = ColorMode(cur)
 	}
+}
+
+func (a *app) whitenField(c *ui.Context) {
+	sectionLabel(c, "背景增白", false)
+	on := a.whiten
+	useless := a.color == ColorBW || scanner.IsPhotoIntent(a.intent)
+	hint := "把灰色纸底拉成白色。"
+	switch {
+	case a.color == ColorBW:
+		hint = "黑白扫描本身就是白底。"
+	case scanner.IsPhotoIntent(a.intent):
+		hint = "照片不做背景增白。"
+	}
+	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
+		ui.Text(c, hint).FontSize(11.5).TextColor(colMuted).LineHeight(1.45).Grow(1)
+		sw := ui.Switch(c, &on).Disabled(useless)
+		if sw.Changed() {
+			a.whiten = on
+		}
+	})
 }
 
 func (a *app) sourceField(c *ui.Context) {

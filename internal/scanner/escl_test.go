@@ -255,6 +255,7 @@ type fakeScanner struct {
 	nextCalls  int32
 	deleted    int32
 	lastCreate string
+	page       []byte // nil = 纯白 tinyJPEG
 }
 
 func newFakeScanner(t *testing.T, pages int) *fakeScanner {
@@ -291,6 +292,10 @@ func newFakeScannerN(t *testing.T, pages, failAt int) *fakeScanner {
 			return
 		}
 		w.Header().Set("Content-Type", "image/jpeg")
+		if fs.page != nil {
+			w.Write(fs.page)
+			return
+		}
 		w.Write(tinyJPEG(t))
 	})
 	mux.HandleFunc("/eSCL/ScanJobs/42", func(w http.ResponseWriter, r *http.Request) {

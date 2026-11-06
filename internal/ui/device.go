@@ -513,16 +513,18 @@ func (a *app) restoreScanPrefs(s *platform.ScanPrefs) {
 		a.intent = s.Intent
 	}
 	a.feeder = s.Feeder
+	a.whiten = !s.KeepBackground
 }
 
 // 在 startScan 里调：真正用过的设置才值得跨会话记住。
 func (a *app) saveScanPrefs() {
 	platform.SaveScanPrefs(platform.ScanPrefs{
-		Color:  int(a.color),
-		Size:   int(a.size),
-		DPI:    a.dpi,
-		Intent: a.intent,
-		Feeder: a.feeder,
+		Color:          int(a.color),
+		Size:           int(a.size),
+		DPI:            a.dpi,
+		Intent:         a.intent,
+		Feeder:         a.feeder,
+		KeepBackground: !a.whiten,
 	})
 }
 
@@ -553,6 +555,7 @@ func (a *app) startScan() {
 		Size:   a.size.key(),
 		Feeder: a.feeder,
 		Intent: a.intent,
+		Whiten: a.whiten,
 	}
 	_ = platform.EnsurePagesDir()
 	dir := platform.SessionDir()

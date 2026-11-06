@@ -24,6 +24,9 @@ type ScanPrefs struct {
 	DPI    int    `json:"dpi,omitempty"`
 	Intent string `json:"intent,omitempty"`
 	Feeder bool   `json:"feeder,omitempty"`
+	// 存反过来的「保留灰底」：旧记录没有这个字段时零值 = 增白开启，
+	// 与当前默认一致，不用为新增开关迁移旧文件。
+	KeepBackground bool `json:"keepBackground,omitempty"`
 }
 
 type prefsData struct {
