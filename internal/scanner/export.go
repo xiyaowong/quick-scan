@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 
@@ -90,6 +91,22 @@ func uniquePath(dir, name, ext string) string {
 	}
 }
 
+// fitPage 按 300dpi 把像素尺寸换成 pt，等比缩进 A4 并居中。
+// 旋转成横版时换横向页面；否则横版图会被 A4 页宽截掉一截。
+func fitPage(pxW, pxH int) (page *gopdf.Rect, x, y, w, h float64) {
+	// px * 72 / dpi
+	const dpi = 300.0
+	wPt := float64(pxW) * 72.0 / dpi
+	hPt := float64(pxH) * 72.0 / dpi
+	page = gopdf.PageSizeA4
+	if wPt > hPt {
+		page = gopdf.PageSizeA4Landscape
+	}
+	scale := math.Min(1, math.Min(page.W/wPt, page.H/hPt))
+	w, h = wPt*scale, hPt*scale
+	return page, (page.W - w) / 2, (page.H - h) / 2, w, h
+}
+
 func exportPDF(pages []ExportPage, outPath string, prog ProgressFunc) error {
 	pdf := gopdf.GoPdf{}
 	pdf.Start(gopdf.Config{PageSize: *gopdf.PageSizeA4})
@@ -103,17 +120,13 @@ func exportPDF(pages []ExportPage, outPath string, prog ProgressFunc) error {
 		if err != nil {
 			return fmt.Errorf("JPG 编码失败: %w", err)
 		}
-		pdf.AddPage()
-		w, h := img.Bounds().Dx(), img.Bounds().Dy()
-		// px * 72 / dpi
-		const dpi = 300.0
-		pwPt := float64(w) * 72.0 / dpi
-		phPt := float64(h) * 72.0 / dpi
 		holder, err := gopdf.ImageHolderByBytes(jpg)
 		if err != nil {
 			return fmt.Errorf("PDF 图片装载失败: %w", err)
 		}
-		if err := pdf.ImageByHolder(holder, 0, 0, &gopdf.Rect{W: pwPt, H: phPt}); err != nil {
+		page, x, y, w, h := fitPage(img.Bounds().Dx(), img.Bounds().Dy())
+		pdf.AddPageWithOption(gopdf.PageOption{PageSize: page})
+		if err := pdf.ImageByHolder(holder, x, y, &gopdf.Rect{W: w, H: h}); err != nil {
 			return fmt.Errorf("PDF 插图失败: %w", err)
 		}
 		prog(i+1, len(pages))
