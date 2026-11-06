@@ -55,6 +55,7 @@ func TestStartScanSavesScanPrefs(t *testing.T) {
 	a.dpi = 150
 	a.intent = "Photo"
 	a.feeder = true
+	a.whiten = false
 
 	a.startScan()
 
@@ -64,6 +65,22 @@ func TestStartScanSavesScanPrefs(t *testing.T) {
 	}
 	if got.Color != int(ColorBW) || got.Size != int(SizeA5) || got.DPI != 150 || got.Intent != "Photo" || !got.Feeder {
 		t.Fatalf("写盘的设置和当时的界面不一致: %+v", got)
+	}
+	if !got.KeepBackground {
+		t.Fatal("关掉背景增白后，记录里没有保留灰底")
+	}
+}
+
+// 旧记录没有 keepBackground 字段：新增开关不能把老用户的默认改成关。
+func TestRestoreScanPrefsDefaultsWhitenOn(t *testing.T) {
+	a := newApp()
+	a.restoreScanPrefs(&platform.ScanPrefs{})
+	if !a.whiten {
+		t.Fatal("旧记录恢复后背景增白被关掉了")
+	}
+	a.restoreScanPrefs(&platform.ScanPrefs{KeepBackground: true})
+	if a.whiten {
+		t.Fatal("记录里保留了灰底，恢复后却还在增白")
 	}
 }
 

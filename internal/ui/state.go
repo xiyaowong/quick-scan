@@ -241,6 +241,7 @@ type app struct {
 	dpi        int    // 设备支持的清晰度（见 DeviceInfo.DPIs）
 	intent     string // eSCL Intent，默认 Document
 	color      ColorMode
+	whiten     bool // 背景增白：把灰底纸张拉成白底
 	feeder     bool // false=玻璃板 true=进纸口
 
 	pages      []Page
@@ -297,6 +298,7 @@ func newApp() *app {
 		dpi:          300,
 		intent:       scanner.IntentDocument,
 		color:        ColorColor,
+		whiten:       true,
 		nextPageID:   1,
 		selected:     map[uint64]bool{},
 		exportSingle: -1,
