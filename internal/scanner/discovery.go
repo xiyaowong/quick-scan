@@ -74,11 +74,15 @@ func Discover(ctx context.Context) ([]DeviceInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, discoverWait)
 	defer cancel()
 
-	mc, err := openMulticastSocket()
+	socks, err := openMulticastSockets()
 	if err != nil {
 		return nil, err
 	}
-	defer mc.Close()
+	defer func() {
+		for _, s := range socks {
+			s.Close()
+		}
+	}()
 	b := newBrowser()
 	defer b.close()
 
@@ -89,7 +93,9 @@ func Discover(ctx context.Context) ([]DeviceInfo, error) {
 	}
 	defer uc.Close()
 
-	go b.readLoop(mc.read)
+	for _, s := range socks {
+		go b.readLoop(s.read)
+	}
 	go b.readLoop(func(buf []byte) (int, net.IP, error) {
 		uc.SetReadDeadline(time.Now().Add(unicastReadDeadline))
 		n, src, err := uc.ReadFromUDP(buf)
@@ -101,9 +107,9 @@ func Discover(ctx context.Context) ([]DeviceInfo, error) {
 
 	// ── phase 1：组播 PTR ──
 	ptrQuery := queryPacket(esclFQDN, dns.TypePTR, false)
-	mc.send(ptrQuery)
+	sendToAll(socks, ptrQuery)
 	b.collect(ctx, phase1Wait, 600*time.Millisecond, func() {
-		mc.send(ptrQuery)
+		sendToAll(socks, ptrQuery)
 	})
 
 	// ── phase 2：向每个应答方单播 SRV/TXT ──
@@ -126,22 +132,40 @@ func Discover(ctx context.Context) ([]DeviceInfo, error) {
 	return b.devices(ctx), nil
 }
 
-// 多网卡全加入反而容易选错出口。
+// 每张局域网网卡各开一个 socket。socket 绑定单张网卡时组播只从那张走；
+// 只认默认路由的话，VPN/TUN 一抢路由，查询就全发进隧道了。
 type multicastSocket struct {
 	conn *net.UDPConn
 }
 
-func openMulticastSocket() (*multicastSocket, error) {
-	ifi, err := defaultIPv4Iface()
-	if err != nil {
-		return nil, err
+func openMulticastSockets() ([]*multicastSocket, error) {
+	ifaces := lanIPv4Ifaces()
+	if len(ifaces) == 0 {
+		return nil, errors.New("没有可用的 IPv4 网卡，无法发现扫描仪")
 	}
-	conn, err := net.ListenMulticastUDP("udp4", ifi, mdnsGroup)
-	if err != nil {
-		return nil, fmt.Errorf("无法监听 mDNS（端口 5353）：%w", err)
+	var socks []*multicastSocket
+	var firstErr error
+	for _, ia := range ifaces {
+		conn, err := net.ListenMulticastUDP("udp4", ia.ifi, mdnsGroup)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue // 某张网卡监听失败（被防火墙或别的 mDNS 服务占了），其余照常
+		}
+		conn.SetReadBuffer(1 << 16)
+		socks = append(socks, &multicastSocket{conn})
 	}
-	conn.SetReadBuffer(1 << 16)
-	return &multicastSocket{conn: conn}, nil
+	if len(socks) == 0 {
+		return nil, fmt.Errorf("无法监听 mDNS（端口 5353）：%w", firstErr)
+	}
+	return socks, nil
+}
+
+func sendToAll(socks []*multicastSocket, buf []byte) {
+	for _, s := range socks {
+		s.send(buf)
+	}
 }
 
 func (s *multicastSocket) send(buf []byte) { s.conn.WriteToUDP(buf, mdnsGroup) }
@@ -157,35 +181,55 @@ func (s *multicastSocket) read(buf []byte) (int, net.IP, error) {
 
 func (s *multicastSocket) Close() { s.conn.Close() }
 
-func defaultIPv4Iface() (*net.Interface, error) {
-	_, ifi, err := defaultIPv4Addr()
-	return ifi, err
+type lanIface struct {
+	ifi *net.Interface
+	ip  net.IP
 }
 
-func defaultIPv4Addr() (net.IP, *net.Interface, error) {
-	conn, err := net.DialUDP("udp4", nil, &net.UDPAddr{IP: net.IPv4(8, 8, 8, 8), Port: 53})
-	if err == nil {
-		local := conn.LocalAddr().(*net.UDPAddr).IP.To4()
-		conn.Close()
-		if local != nil {
-			if ifi := ifaceByIPv4(local); ifi != nil {
-				return local, ifi, nil
-			}
-		}
+// lanIPv4Ifaces 列出可能挂着打印机的网卡：up、支持组播、非 loopback、非链路本地。
+// 默认路由所在的网卡排最前，其余按系统顺序；没有组播的网卡（TUN/VPN）直接排除，
+// 它们不承载局域网发现，却常常占着默认路由。
+func lanIPv4Ifaces() []lanIface {
+	var out []lanIface
+	seen := map[int]bool{}
+	if ip, ifi := defaultRouteIPv4(); ifi != nil && usableLANIface(ifi) && !ip.IsLinkLocalUnicast() {
+		out = append(out, lanIface{ifi, ip})
+		seen[ifi.Index] = true
 	}
-	// 没有默认路由时（纯内网且未配网关），退第一个有非链路本地 IPv4 的组播网卡。
 	ifaces, _ := net.Interfaces()
 	for i := range ifaces {
 		ifi := &ifaces[i]
-		if ifi.Flags&net.FlagUp == 0 || ifi.Flags&net.FlagLoopback != 0 ||
-			ifi.Flags&net.FlagMulticast == 0 {
+		if seen[ifi.Index] || !usableLANIface(ifi) {
 			continue
 		}
-		if ip := ifaceIPv4(ifi); ip != nil && !ip.IsLinkLocalUnicast() {
-			return ip, ifi, nil
+		ip := ifaceIPv4(ifi)
+		if ip == nil || ip.IsLinkLocalUnicast() {
+			continue
 		}
+		out = append(out, lanIface{ifi, ip})
 	}
-	return nil, nil, errors.New("没有可用的 IPv4 网卡，无法发现扫描仪")
+	return out
+}
+
+func usableLANIface(ifi *net.Interface) bool {
+	return ifi.Flags&net.FlagUp != 0 &&
+		ifi.Flags&net.FlagLoopback == 0 &&
+		ifi.Flags&net.FlagMulticast != 0 &&
+		ifi.Flags&net.FlagPointToPoint == 0
+}
+
+// defaultRouteIPv4 拨一个外网地址，取内核选中的出口地址和网卡。
+func defaultRouteIPv4() (net.IP, *net.Interface) {
+	conn, err := net.DialUDP("udp4", nil, &net.UDPAddr{IP: net.IPv4(8, 8, 8, 8), Port: 53})
+	if err != nil {
+		return nil, nil
+	}
+	defer conn.Close()
+	local := conn.LocalAddr().(*net.UDPAddr).IP.To4()
+	if local == nil {
+		return nil, nil
+	}
+	return local, ifaceByIPv4(local)
 }
 
 func ifaceByIPv4(ip net.IP) *net.Interface {

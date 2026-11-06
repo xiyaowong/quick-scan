@@ -15,7 +15,7 @@ import (
 
 const (
 	scanProbeTimeout = 800 * time.Millisecond // 局域网里的设备在线就秒回
-	scanWorkers      = 40                     // 同时探几个地址
+	scanWorkers      = 64                     // 同时探几个地址；多网段共用一个总时限
 	scanTotalLimit   = 8 * time.Second
 	scanBodyLimit    = 64 << 10 // 能力 XML 远小于这个，只读开头就够判定
 )
@@ -31,11 +31,10 @@ var scanHTTP = &http.Client{
 
 // onFound 可能来自不同的 goroutine，调用方自己保证线程安全。
 func ScanSubnet(ctx context.Context, onFound func(DeviceInfo)) error {
-	local, subnet, err := defaultIPv4Net()
+	hosts, err := scanTargets()
 	if err != nil {
 		return err
 	}
-	hosts := scanHosts(local, subnet)
 	if len(hosts) == 0 {
 		return errors.New("所在网段没有可扫描的地址")
 	}
@@ -79,17 +78,50 @@ func probeHosts(ctx context.Context, hosts []net.IP,
 	wg.Wait()
 }
 
-func defaultIPv4Net() (net.IP, *net.IPNet, error) {
-	local, ifi, err := defaultIPv4Addr()
-	if err != nil {
-		return nil, nil, err
+// scanTargets 汇总所有局域网网卡的待探地址，跨网段按地址段交错排列。
+// 若按网段顺序扫，虚拟网卡（VMware 之类）会排在真网卡前面把时间预算耗光。
+func scanTargets() ([]net.IP, error) {
+	ifaces := lanIPv4Ifaces()
+	if len(ifaces) == 0 {
+		return nil, errors.New("没有可用的 IPv4 网卡，无法发现扫描仪")
 	}
-	subnet := ifaceIPv4Net(ifi, local)
-	if subnet == nil {
-		mask := net.CIDRMask(24, 32)
-		subnet = &net.IPNet{IP: local.Mask(mask), Mask: mask}
+	type target struct {
+		ip     net.IP
+		rank   int
+		subnet int
 	}
-	return local, subnet, nil
+	var targets []target
+	seen := map[string]bool{}
+	for si, ia := range ifaces {
+		subnet := ifaceIPv4Net(ia.ifi, ia.ip)
+		if subnet == nil {
+			mask := net.CIDRMask(24, 32)
+			subnet = &net.IPNet{IP: ia.ip.Mask(mask), Mask: mask}
+		}
+		for _, ip := range scanHosts(ia.ip, subnet) {
+			key := ip.String()
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			targets = append(targets, target{ip, hostRank(ip.To4()[3]), si})
+		}
+	}
+	sort.SliceStable(targets, func(i, j int) bool {
+		a, b := targets[i], targets[j]
+		if a.rank != b.rank {
+			return a.rank < b.rank
+		}
+		if a.subnet != b.subnet {
+			return a.subnet < b.subnet
+		}
+		return bytes.Compare(a.ip.To4(), b.ip.To4()) < 0
+	})
+	hosts := make([]net.IP, len(targets))
+	for i, t := range targets {
+		hosts[i] = t.ip
+	}
+	return hosts, nil
 }
 
 // scanHosts 按常见 DHCP 分配习惯排序，家用路由器分到的地址先扫。
