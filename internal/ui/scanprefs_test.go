@@ -13,8 +13,9 @@ import (
 
 func TestRestoreScanPrefs(t *testing.T) {
 	a := newApp()
-	a.restoreScanPrefs(&platform.ScanPrefs{Color: 1, Size: 2, DPI: 600, Intent: "Photo", Feeder: true})
-	if a.color != ColorGray || a.size != SizeLetter || a.dpi != 600 || a.intent != "Photo" || !a.feeder {
+	a.restoreScanPrefs(&platform.ScanPrefs{Color: 1, Size: 2, DPI: 600, Intent: "Photo", Feeder: true, EnhanceLevel: 2})
+	if a.color != ColorGray || a.size != SizeLetter || a.dpi != 600 || a.intent != "Photo" || !a.feeder ||
+		a.enhanceLevel != scanner.EnhanceStrong {
 		t.Fatalf("恢复后的设置不对: %+v", a)
 	}
 }
@@ -22,8 +23,9 @@ func TestRestoreScanPrefs(t *testing.T) {
 // 损坏的记录宁可丢掉也不能带出非法枚举值。
 func TestRestoreScanPrefsIgnoresInvalid(t *testing.T) {
 	a := newApp()
-	a.restoreScanPrefs(&platform.ScanPrefs{Color: 9, Size: -1, DPI: 0, Intent: ""})
-	if a.color != ColorColor || a.size != SizeA4 || a.dpi != 300 || a.intent != scanner.IntentDocument || a.feeder {
+	a.restoreScanPrefs(&platform.ScanPrefs{Color: 9, Size: -1, DPI: 0, Intent: "", EnhanceLevel: 9})
+	if a.color != ColorColor || a.size != SizeA4 || a.dpi != 300 || a.intent != scanner.IntentDocument || a.feeder ||
+		a.enhanceLevel != scanner.EnhanceStandard {
 		t.Fatalf("非法值没有回退到默认: %+v", a)
 	}
 }
@@ -56,6 +58,7 @@ func TestStartScanSavesScanPrefs(t *testing.T) {
 	a.intent = "Photo"
 	a.feeder = true
 	a.enhance = false
+	a.enhanceLevel = scanner.EnhanceLight
 
 	a.startScan()
 
@@ -69,14 +72,17 @@ func TestStartScanSavesScanPrefs(t *testing.T) {
 	if !got.NoEnhance {
 		t.Fatal("关掉自动优化后，记录里没有保留原样")
 	}
+	if got.EnhanceLevel != int(scanner.EnhanceLight) {
+		t.Fatalf("优化强度没有写盘: %+v", got)
+	}
 }
 
 // 旧记录没有 keepBackground 字段：新增开关不能把老用户的默认改成关。
 func TestRestoreScanPrefsDefaultsEnhanceOn(t *testing.T) {
 	a := newApp()
 	a.restoreScanPrefs(&platform.ScanPrefs{})
-	if !a.enhance {
-		t.Fatal("旧记录恢复后自动优化被关掉了")
+	if !a.enhance || a.enhanceLevel != scanner.EnhanceStandard {
+		t.Fatal("旧记录恢复后没有回到默认优化和标准强度")
 	}
 	a.restoreScanPrefs(&platform.ScanPrefs{NoEnhance: true})
 	if a.enhance {

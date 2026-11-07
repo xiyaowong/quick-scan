@@ -3,6 +3,7 @@ package scanner
 import (
 	"errors"
 	"fmt"
+	"image"
 	"io/fs"
 	"math"
 	"os"
@@ -23,6 +24,22 @@ type ExportOutcome struct {
 type ExportPage struct {
 	Path string
 	Rot  int
+	// Enhance 为 true 时先按 EnhanceLevel 从 Path 重新增强。
+	// 扫描时已经增强过的页传原图进来，导出时按用户选的力度现做。
+	Enhance      bool
+	EnhanceLevel EnhanceLevel
+}
+
+// decodeExportPage 解码一页并按需重做增强与旋转。
+func decodeExportPage(pw ExportPage) (*image.RGBA, error) {
+	img, err := Decode(pw.Path)
+	if err != nil {
+		return nil, fmt.Errorf("读原图失败: %w", err)
+	}
+	if pw.Enhance {
+		enhanceImage(img, pw.EnhanceLevel)
+	}
+	return Rotate90(img, pw.Rot), nil
 }
 
 type ProgressFunc func(done, total int)
@@ -111,11 +128,10 @@ func exportPDF(pages []ExportPage, outPath string, prog ProgressFunc) error {
 	pdf := gopdf.GoPdf{}
 	pdf.Start(gopdf.Config{PageSize: *gopdf.PageSizeA4})
 	for i, pw := range pages {
-		img, err := Decode(pw.Path)
+		img, err := decodeExportPage(pw)
 		if err != nil {
-			return fmt.Errorf("读原图失败: %w", err)
+			return err
 		}
-		img = Rotate90(img, pw.Rot)
 		jpg, err := encodeJPEG(img, 90)
 		if err != nil {
 			return fmt.Errorf("JPG 编码失败: %w", err)
@@ -154,11 +170,10 @@ func WritePageJPEG(p ExportPage, path string) error {
 func exportJPGs(pages []ExportPage, dir, name string, prog ProgressFunc) ([]string, error) {
 	var written []string
 	for i, pw := range pages {
-		img, err := Decode(pw.Path)
+		img, err := decodeExportPage(pw)
 		if err != nil {
-			return nil, fmt.Errorf("读原图失败: %w", err)
+			return nil, err
 		}
-		img = Rotate90(img, pw.Rot)
 		jpg, err := encodeJPEG(img, 88)
 		if err != nil {
 			return nil, fmt.Errorf("JPG 编码失败: %w", err)

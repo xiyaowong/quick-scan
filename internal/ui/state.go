@@ -240,14 +240,15 @@ type app struct {
 	devGrid     ui.GridState
 	// hint 是状态栏右侧唯一的一行提示：检测进度、正在连哪台、失败原因。
 	// hintDetail 是它的补充详情（原始错误），鼠标悬停时显示。
-	hint       string
-	hintDetail string
-	size       PaperSize
-	dpi        int    // 设备支持的清晰度（见 DeviceInfo.DPIs）
-	intent     string // eSCL Intent，默认 Document
-	color      ColorMode
-	enhance    bool // 自动优化：铺平灰底、加深文字；原图另存
-	feeder     bool // false=玻璃板 true=进纸口
+	hint         string
+	hintDetail   string
+	size         PaperSize
+	dpi          int    // 设备支持的清晰度（见 DeviceInfo.DPIs）
+	intent       string // eSCL Intent，默认 Document
+	color        ColorMode
+	enhance      bool                 // 自动优化：铺平灰底、加深文字；原图另存
+	enhanceLevel scanner.EnhanceLevel // 优化力度：轻 / 标准 / 强
+	feeder       bool                 // false=玻璃板 true=进纸口
 
 	pages      []Page
 	nextPageID uint64
@@ -276,7 +277,8 @@ type app struct {
 	dlg DialogKind
 
 	exportFmt      ExportFormat
-	exportOriginal bool // 导出扫描仪原图，不导出优化版
+	exportOriginal bool                 // 导出扫描仪原图，不导出优化版
+	exportLevel    scanner.EnhanceLevel // 导出时按这个力度从原图重做
 	exportPhase    ExportPhase
 	exportDone     ExportDone
 	exportFilename string

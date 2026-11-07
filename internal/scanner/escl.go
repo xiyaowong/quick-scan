@@ -433,12 +433,13 @@ func supportedSizes(caps *scannerCapabilities) []string {
 }
 
 type Options struct {
-	Color   string // color / gray / bw
-	DPI     int
-	Size    string // a4 / a5 / letter
-	Feeder  bool
-	Intent  string // eSCL Intent；空 = Document
-	Enhance bool   // 文档增强；照片不受影响
+	Color        string // color / gray / bw
+	DPI          int
+	Size         string // a4 / a5 / letter
+	Feeder       bool
+	Intent       string       // eSCL Intent；空 = Document
+	Enhance      bool         // 文档增强；照片不受影响
+	EnhanceLevel EnhanceLevel // 增强力度；零值 = 标准
 }
 
 // ScannedPage 是一页扫描结果。做了增强时原图另外留一份，导出可以切回原图；
@@ -553,7 +554,7 @@ func Scan(ctx context.Context, d *DeviceInfo, opts Options, sink ScanSink) (_ []
 		} else if opts.Enhance && !IsPhotoIntent(opts.Intent) {
 			// 设备出的是灰底原图；官方软件默认做背景去除。增强版落盘，原图另存一份，
 			// 导出时可以不改主意。
-			if out, ok := enhancePage(data); ok {
+			if out, ok := enhancePage(data, opts.EnhanceLevel); ok {
 				raw := filepath.Join(sink.Dir, stem+".orig"+ext)
 				// 原图留不住不影响这次扫描：增强版照样交付，只是导出时没有原图可选。
 				if err := os.WriteFile(raw, data, 0o644); err == nil {

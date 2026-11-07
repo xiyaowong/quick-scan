@@ -28,6 +28,8 @@ type ScanPrefs struct {
 	// 与当前默认一致，不用为新增开关迁移旧文件。
 	// 键沿用早期的 keepBackground：改键会让老用户已经关掉的开关重新打开。
 	NoEnhance bool `json:"keepBackground,omitempty"`
+	// 0 = 标准；旧记录没有这个字段时正好落在默认档。
+	EnhanceLevel int `json:"enhanceLevel,omitempty"`
 }
 
 type prefsData struct {
