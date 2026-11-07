@@ -58,7 +58,7 @@ func run() (err error) {
 		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:          "快速扫描",
 			Width:          1180,
-			Height:         820,
+			Height:         900,
 			UseContentSize: true,
 			MinWidth:       920,
 			MinHeight:      660,
