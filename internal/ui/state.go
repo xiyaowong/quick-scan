@@ -76,7 +76,8 @@ type Page struct {
 	// 旋转时直接转它：为了转缩略图去解码 300dpi 原图要几百毫秒。
 	ThumbSrc *image.RGBA
 	Rot      int    // 0/90/180/270：只是渲染参数，导出/OCR 时才烘进像素
-	FullPath string // 高清原图（%TEMP% 会话目录下，灯箱/导出时才读）
+	FullPath string // 当前展示的高清页（增强后；%TEMP% 会话目录下）
+	RawPath  string // 扫描仪原图；空 = 没有单独的，FullPath 就是原图
 }
 
 func (p *Page) thumb() *ui.Bitmap {
@@ -112,6 +113,7 @@ type ExportDone struct {
 	Dir       string // 真实目录（"打开所在文件夹"用）
 	File      string // 真实文件路径，仅单文件导出时有值
 	PageCount int
+	Original  bool // 导出的是扫描仪原图
 }
 
 type Lightbox struct {
@@ -244,7 +246,7 @@ type app struct {
 	dpi        int    // 设备支持的清晰度（见 DeviceInfo.DPIs）
 	intent     string // eSCL Intent，默认 Document
 	color      ColorMode
-	whiten     bool // 背景增白：把灰底纸张拉成白底
+	enhance    bool // 自动优化：铺平灰底、加深文字；原图另存
 	feeder     bool // false=玻璃板 true=进纸口
 
 	pages      []Page
@@ -274,6 +276,7 @@ type app struct {
 	dlg DialogKind
 
 	exportFmt      ExportFormat
+	exportOriginal bool // 导出扫描仪原图，不导出优化版
 	exportPhase    ExportPhase
 	exportDone     ExportDone
 	exportFilename string
@@ -302,7 +305,7 @@ func newApp() *app {
 		dpi:          300,
 		intent:       scanner.IntentDocument,
 		color:        ColorColor,
-		whiten:       true,
+		enhance:      true,
 		nextPageID:   1,
 		selected:     map[uint64]bool{},
 		exportSingle: -1,
@@ -429,7 +432,11 @@ func (a *app) saveSession() {
 	}
 	pages := make([]platform.SessionPage, 0, len(a.pages))
 	for _, p := range a.pages {
-		pages = append(pages, platform.SessionPage{File: filepath.Base(p.FullPath), Rot: p.Rot})
+		sp := platform.SessionPage{File: filepath.Base(p.FullPath), Rot: p.Rot}
+		if p.RawPath != "" {
+			sp.RawFile = filepath.Base(p.RawPath)
+		}
+		pages = append(pages, sp)
 	}
 	platform.SaveSession(pages)
 }

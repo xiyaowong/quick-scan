@@ -591,18 +591,18 @@ func (a *app) restoreScanPrefs(s *platform.ScanPrefs) {
 		a.intent = s.Intent
 	}
 	a.feeder = s.Feeder
-	a.whiten = !s.KeepBackground
+	a.enhance = !s.NoEnhance
 }
 
 // 在 startScan 里调：真正用过的设置才值得跨会话记住。
 func (a *app) saveScanPrefs() {
 	platform.SaveScanPrefs(platform.ScanPrefs{
-		Color:          int(a.color),
-		Size:           int(a.size),
-		DPI:            a.dpi,
-		Intent:         a.intent,
-		Feeder:         a.feeder,
-		KeepBackground: !a.whiten,
+		Color:     int(a.color),
+		Size:      int(a.size),
+		DPI:       a.dpi,
+		Intent:    a.intent,
+		Feeder:    a.feeder,
+		NoEnhance: !a.enhance,
 	})
 }
 
@@ -628,12 +628,12 @@ func (a *app) startScan() {
 	}
 	dev := a.devices[a.devSel]
 	opts := scanner.Options{
-		Color:  a.color.key(),
-		DPI:    a.dpi,
-		Size:   a.size.key(),
-		Feeder: a.feeder,
-		Intent: a.intent,
-		Whiten: a.whiten,
+		Color:   a.color.key(),
+		DPI:     a.dpi,
+		Size:    a.size.key(),
+		Feeder:  a.feeder,
+		Intent:  a.intent,
+		Enhance: a.enhance,
 	}
 	_ = platform.EnsurePagesDir()
 	dir := platform.SessionDir()
@@ -651,8 +651,8 @@ func (a *app) startScan() {
 				Win.Update(func() { a.scanProgress = f })
 			},
 			// 每下完一页就登记：整批扫完前崩溃也不丢已扫的页。
-			OnPage: func(path string) {
-				p, perr := makePage(path, 0)
+			OnPage: func(page scanner.ScannedPage) {
+				p, perr := makePage(page.Path, page.RawPath, 0)
 				Win.Update(func() {
 					if perr != nil {
 						a.scanStatus = "扫描结果读取失败：" + perr.Error()
@@ -704,7 +704,7 @@ func (a *app) stopScan() {
 }
 
 // 解码耗时，调用方负责放到后台线程。
-func makePage(path string, rot int) (Page, error) {
+func makePage(path, rawPath string, rot int) (Page, error) {
 	full, err := scanner.Decode(path)
 	if err != nil {
 		return Page{}, err
@@ -715,6 +715,7 @@ func makePage(path string, rot int) (Page, error) {
 		ThumbSrc: src,
 		Rot:      rot,
 		FullPath: path,
+		RawPath:  rawPath,
 	}
 	if rot%360 != 0 {
 		p.ThumbRot = thumbnail(scanner.Rotate90(src, rot), 240)
@@ -749,7 +750,11 @@ func (a *app) restoreSession() {
 	Win.Update(func() {})
 	go func() {
 		for _, sp := range pages {
-			p, err := makePage(platform.PagePath(sp.File), sp.Rot)
+			raw := ""
+			if sp.RawFile != "" {
+				raw = platform.PagePath(sp.RawFile)
+			}
+			p, err := makePage(platform.PagePath(sp.File), raw, sp.Rot)
 			Win.Update(func() {
 				if err == nil {
 					a.appendPage(p)

@@ -433,12 +433,19 @@ func supportedSizes(caps *scannerCapabilities) []string {
 }
 
 type Options struct {
-	Color  string // color / gray / bw
-	DPI    int
-	Size   string // a4 / a5 / letter
-	Feeder bool
-	Intent string // eSCL Intent；空 = Document
-	Whiten bool   // 纸白归一化；照片不受影响
+	Color   string // color / gray / bw
+	DPI     int
+	Size    string // a4 / a5 / letter
+	Feeder  bool
+	Intent  string // eSCL Intent；空 = Document
+	Enhance bool   // 文档增强；照片不受影响
+}
+
+// ScannedPage 是一页扫描结果。做了增强时原图另外留一份，导出可以切回原图；
+// 没做增强（或不需要）时 RawPath 为空，Path 就是设备原图。
+type ScannedPage struct {
+	Path    string
+	RawPath string
 }
 
 type ScanSink struct {
@@ -446,10 +453,10 @@ type ScanSink struct {
 	// 0..1 的估算进度。
 	Progress func(float64)
 	// OnPage 在扫描 goroutine 里每落盘一页调一次：扫描中途崩溃也不会丢掉已经下完的页。
-	OnPage func(path string)
+	OnPage func(ScannedPage)
 }
 
-func Scan(ctx context.Context, d *DeviceInfo, opts Options, sink ScanSink) (_ []string, err error) {
+func Scan(ctx context.Context, d *DeviceInfo, opts Options, sink ScanSink) (_ []ScannedPage, err error) {
 	report := func(f float64) {
 		if sink.Progress != nil {
 			sink.Progress(f)
@@ -508,7 +515,7 @@ func Scan(ctx context.Context, d *DeviceInfo, opts Options, sink ScanSink) (_ []
 		span = 0.9
 	}
 
-	var files []string
+	var files []ScannedPage
 	for i := 1; ; i++ {
 		data, ct, err := nextDocument(ctx, jobURL, expect, func(f float64) {
 			report(base + (1-base)*span*f)
@@ -535,23 +542,36 @@ func Scan(ctx context.Context, d *DeviceInfo, opts Options, sink ScanSink) (_ []
 		case strings.Contains(ct, "jpeg"), strings.Contains(ct, "jpg"):
 			ext = ".jpg"
 		}
+		page := ScannedPage{}
+		stem := fmt.Sprintf("page_%d_%d", time.Now().UnixMilli(), i)
 		if bilevel {
 			data, err = bilevelPNG(data)
 			if err != nil {
 				return nil, fmt.Errorf("黑白转换失败：%w", err)
 			}
 			ext = ".png" // 二值图存 PNG：JPEG 的 DCT 会把纯黑白重新变灰
-		} else if opts.Whiten && !IsPhotoIntent(opts.Intent) {
-			// 设备出的是灰底原图；官方软件默认做背景去除，这里补上同样的白点归一化。
-			data = whitenPage(data)
+		} else if opts.Enhance && !IsPhotoIntent(opts.Intent) {
+			// 设备出的是灰底原图；官方软件默认做背景去除。增强版落盘，原图另存一份，
+			// 导出时可以不改主意。
+			if out, ok := enhancePage(data); ok {
+				raw := filepath.Join(sink.Dir, stem+".orig"+ext)
+				// 原图留不住不影响这次扫描：增强版照样交付，只是导出时没有原图可选。
+				if err := os.WriteFile(raw, data, 0o644); err == nil {
+					page.RawPath = raw
+				}
+				data = out
+			}
 		}
-		path := filepath.Join(sink.Dir, fmt.Sprintf("page_%d_%d%s", time.Now().UnixMilli(), i, ext))
-		if err := os.WriteFile(path, data, 0o644); err != nil {
+		page.Path = filepath.Join(sink.Dir, stem+ext)
+		if err := os.WriteFile(page.Path, data, 0o644); err != nil {
+			if page.RawPath != "" {
+				os.Remove(page.RawPath)
+			}
 			return nil, fmt.Errorf("保存扫描页失败：%w", err)
 		}
-		files = append(files, path)
+		files = append(files, page)
 		if sink.OnPage != nil {
-			sink.OnPage(path)
+			sink.OnPage(page)
 		}
 		if !opts.Feeder {
 			break // 玻璃板一次一张

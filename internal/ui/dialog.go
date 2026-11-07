@@ -21,6 +21,7 @@ func (a *app) openExport(single int) {
 	a.exportSingle = single
 	a.exportPhase = PhaseIdle
 	a.exportFmt = ExportPDF
+	a.exportOriginal = false
 	a.exportFilename = a.defaultFilename()
 	a.ocrPicked = false
 	a.dlg = DlgExport
@@ -101,6 +102,22 @@ func (a *app) exportFormView(c *ui.Context) {
 		caption(c, "全部页面合成一个文件。")
 	}
 
+	if a.canExportOriginal() {
+		sectionLabel(c, "图像处理", false)
+		cur := 0
+		if a.exportOriginal {
+			cur = 1
+		}
+		if segmented(c, &cur, []string{"优化后", "原图"}, nil) {
+			a.exportOriginal = cur == 1
+		}
+		if a.exportOriginal {
+			caption(c, "扫描仪直接输出的图片，灰底和噪点都保留。")
+		} else {
+			caption(c, "已去灰底、加深文字。")
+		}
+	}
+
 	sectionLabel(c, "文件名", false)
 	ui.TextInput(c, &a.exportFilename).FillWidth().Height(40).Radius(8)
 
@@ -136,6 +153,9 @@ func (a *app) exportFormView(c *ui.Context) {
 
 func (a *app) exportDoneView(c *ui.Context) {
 	successPanel(c, "已导出", fmt.Sprintf("共 %d 页", a.exportDone.PageCount))
+	if a.exportDone.Original {
+		caption(c, "导出的是扫描仪原图，未做自动优化。")
+	}
 	if a.exportDone.Display != "" {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Padding(10, 12, 10, 12).
 			Radius(8).Background(colPanelSoft).Children(func() {
@@ -210,8 +230,9 @@ func (a *app) runExport() {
 	job := exportJob{
 		name:     name,
 		format:   a.exportFmt,
+		original: a.exportOriginal,
 		startDir: a.lastExportDir,
-		pages:    a.pageExports(),
+		pages:    a.pageExports(a.exportOriginal),
 	}
 
 	go func() {
@@ -227,17 +248,32 @@ func (a *app) runExport() {
 type exportJob struct {
 	name     string
 	format   ExportFormat
+	original bool
 	startDir string
 	pages    []scanner.ExportPage
 }
 
-func (a *app) pageExports() []scanner.ExportPage {
+func (a *app) pageExports(original bool) []scanner.ExportPage {
 	targets := a.exportTargets()
 	pages := make([]scanner.ExportPage, len(targets))
 	for i, p := range targets {
-		pages[i] = scanner.ExportPage{Path: p.FullPath, Rot: p.Rot}
+		path := p.FullPath
+		if original && p.RawPath != "" {
+			path = p.RawPath
+		}
+		pages[i] = scanner.ExportPage{Path: path, Rot: p.Rot}
 	}
 	return pages
+}
+
+// canExportOriginal 有没有页面另存了原图：没有就不必摆一个选了也没差别的开关。
+func (a *app) canExportOriginal() bool {
+	for _, p := range a.exportTargets() {
+		if p.RawPath != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *app) pickExportPath(job exportJob) (string, bool) {
@@ -301,6 +337,7 @@ func (a *app) writeExport(job exportJob, path string) {
 			Dir:       out.Dir,
 			File:      out.File,
 			PageCount: out.PageCount,
+			Original:  job.original,
 		}
 	})
 }
@@ -384,6 +421,9 @@ func (a *app) deletePage(id uint64) {
 		return
 	}
 	os.Remove(a.pages[idx].FullPath)
+	if a.pages[idx].RawPath != "" {
+		os.Remove(a.pages[idx].RawPath)
+	}
 	delete(a.selected, id)
 	a.pages = append(a.pages[:idx], a.pages[idx+1:]...)
 	if a.lightbox != nil {

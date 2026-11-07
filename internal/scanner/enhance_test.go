@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"os"
 	"testing"
 )
 
@@ -24,6 +25,11 @@ func grayPaperJPEG(t *testing.T) []byte {
 			img.Set(x, y, color.RGBA{R: 40, G: 40, B: 40, A: 255})
 		}
 	}
+	return encodeTestJPEG(t, img)
+}
+
+func encodeTestJPEG(t *testing.T, img image.Image) []byte {
+	t.Helper()
 	var buf bytes.Buffer
 	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95}); err != nil {
 		t.Fatal(err)
@@ -52,21 +58,46 @@ func meanAt(src *image.RGBA, x0, y0, size int) float64 {
 	return float64(sum) / float64(size*size*3)
 }
 
-func TestWhitenPageTurnsGrayPaperWhite(t *testing.T) {
-	out := whitenPage(grayPaperJPEG(t))
+func TestEnhancePageTurnsGrayPaperWhite(t *testing.T) {
+	out, ok := enhancePage(grayPaperJPEG(t))
+	if !ok {
+		t.Fatal("灰底文档没有做增强")
+	}
 	img := decodeRGBA(t, out)
 
 	if got := meanAt(img, 10, 10, 20); got < 248 {
 		t.Errorf("纸底还是灰的：%.1f", got)
 	}
-	// 字从 40 拉到约 51，不能被一起提亮成灰。
-	if got := meanAt(img, 110, 110, 20); got > 80 {
-		t.Errorf("字被提亮了：%.1f", got)
+	// 字从 40 拉到接近黑，不能被一起提亮成灰。
+	if got := meanAt(img, 110, 110, 20); got > 60 {
+		t.Errorf("字没压黑：%.1f", got)
+	}
+}
+
+// 边缘阴影、纸色偏黄：只拉全页白点会把暗的那一边留着，按块估计才能一起铺平。
+func TestEnhancePageFlattensUnevenPaper(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 320, 240))
+	for y := range 240 {
+		for x := range 320 {
+			// 从左到右从 210 暗到 165，左侧还偏黄。
+			v := uint8(210 - x*45/320)
+			img.Set(x, y, color.RGBA{R: v, G: v - 5, B: v - 20, A: 255})
+		}
+	}
+	out, ok := enhancePage(encodeTestJPEG(t, img))
+	if !ok {
+		t.Fatal("有纸底的页面没有做增强")
+	}
+	got := decodeRGBA(t, out)
+	for _, x := range []int{10, 280} {
+		if v := meanAt(got, x, 10, 20); v < 245 {
+			t.Errorf("x=%d 的纸底没铺白：%.1f", x, v)
+		}
 	}
 }
 
 // 照片没有成片的纸底，不该重编码。
-func TestWhitenPageKeepsPhoto(t *testing.T) {
+func TestEnhancePageKeepsPhoto(t *testing.T) {
 	src := image.NewRGBA(image.Rect(0, 0, 240, 320))
 	for y := range 320 {
 		for x := range 240 {
@@ -74,42 +105,34 @@ func TestWhitenPageKeepsPhoto(t *testing.T) {
 			src.Set(x, y, color.RGBA{R: v, G: v, B: v, A: 255})
 		}
 	}
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, src, &jpeg.Options{Quality: 95}); err != nil {
-		t.Fatal(err)
-	}
-	in := buf.Bytes()
-	if out := whitenPage(in); !bytes.Equal(out, in) {
+	in := encodeTestJPEG(t, src)
+	if out, ok := enhancePage(in); ok || !bytes.Equal(out, in) {
 		t.Fatal("照片被当成文档处理了")
 	}
 }
 
 // 已经是白底的设备（自己做过背景去除）不要再重编码一次。
-func TestWhitenPageKeepsWhitePaper(t *testing.T) {
+func TestEnhancePageKeepsWhitePaper(t *testing.T) {
 	src := image.NewRGBA(image.Rect(0, 0, 240, 320))
 	for y := range 320 {
 		for x := range 240 {
 			src.Set(x, y, color.RGBA{R: 250, G: 250, B: 250, A: 255})
 		}
 	}
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, src, &jpeg.Options{Quality: 95}); err != nil {
-		t.Fatal(err)
-	}
-	in := buf.Bytes()
-	if out := whitenPage(in); !bytes.Equal(out, in) {
+	in := encodeTestJPEG(t, src)
+	if out, ok := enhancePage(in); ok || !bytes.Equal(out, in) {
 		t.Fatal("白底页被重编码了")
 	}
 }
 
-// 走完整扫描流程：文档增白，照片原样，关掉开关也原样。
-func TestScanWhitensOnlyDocuments(t *testing.T) {
+// 走完整扫描流程：文档增强并留下原图，照片原样，关掉开关也原样。
+func TestScanEnhancesOnlyDocuments(t *testing.T) {
 	page := grayPaperJPEG(t)
 	cases := []struct {
-		name   string
-		intent string
-		whiten bool
-		white  bool
+		name    string
+		intent  string
+		enhance bool
+		white   bool
 	}{
 		{"文档", "Document", true, true},
 		{"照片", "Photo", true, false},
@@ -124,13 +147,16 @@ func TestScanWhitensOnlyDocuments(t *testing.T) {
 				t.Fatal(err)
 			}
 			files, err := Scan(context.Background(), &d, Options{
-				Color: ColorModeColor, DPI: 300, Size: PaperA4, Intent: tc.intent, Whiten: tc.whiten,
+				Color: ColorModeColor, DPI: 300, Size: PaperA4, Intent: tc.intent, Enhance: tc.enhance,
 			}, ScanSink{Dir: t.TempDir()})
 			if err != nil {
 				t.Fatal(err)
 			}
-			out := readFile(t, files[0])
+			out := readFile(t, files[0].Path)
 			if !tc.white {
+				if files[0].RawPath != "" {
+					t.Fatal("这一档不该另存原图")
+				}
 				if !bytes.Equal(out, page) {
 					t.Fatal("这一档不该重编码")
 				}
@@ -138,6 +164,15 @@ func TestScanWhitensOnlyDocuments(t *testing.T) {
 			}
 			if got := meanAt(decodeRGBA(t, out), 10, 10, 20); got < 248 {
 				t.Errorf("纸底还是灰的：%.1f", got)
+			}
+			if files[0].RawPath == "" {
+				t.Fatal("增强后没有留下原图")
+			}
+			if _, err := os.Stat(files[0].RawPath); err != nil {
+				t.Fatalf("原图没落盘：%v", err)
+			}
+			if raw := readFile(t, files[0].RawPath); !bytes.Equal(raw, page) {
+				t.Fatal("原图被改写了")
 			}
 		})
 	}
