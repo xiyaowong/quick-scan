@@ -353,7 +353,7 @@ func TestProbeAndScanPlaten(t *testing.T) {
 	if len(files) != 1 {
 		t.Fatalf("files = %v", files)
 	}
-	if _, err := os.Stat(files[0]); err != nil {
+	if _, err := os.Stat(files[0].Path); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(fs.lastCreate, "<scan:InputSource>Platen</scan:InputSource>") ||
@@ -391,12 +391,12 @@ func TestScanCancelledKeepsPagesAndDeletesJob(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	var seen []string
+	var seen []ScannedPage
 	files, err := Scan(ctx, &d,
 		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, ScanSink{
 			Dir: t.TempDir(),
-			OnPage: func(path string) {
-				seen = append(seen, path)
+			OnPage: func(page ScannedPage) {
+				seen = append(seen, page)
 				cancel() // 第一页到手就停
 			},
 		})
@@ -520,11 +520,11 @@ func TestScanADFMultiplePages(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	var seen []string
+	var seen []ScannedPage
 	files, err := Scan(context.Background(), &d,
 		Options{Color: ColorModeGray, DPI: 300, Size: PaperA4, Feeder: true}, ScanSink{
 			Dir:    dir,
-			OnPage: func(path string) { seen = append(seen, path) },
+			OnPage: func(page ScannedPage) { seen = append(seen, page) },
 		})
 	if err != nil {
 		t.Fatal(err)
@@ -533,7 +533,7 @@ func TestScanADFMultiplePages(t *testing.T) {
 		t.Fatalf("逐页回调 %d 次，want 3", len(seen))
 	}
 	for _, p := range seen {
-		if _, err := os.Stat(p); err != nil {
+		if _, err := os.Stat(p.Path); err != nil {
 			t.Fatalf("回调时文件还没落盘: %v", err)
 		}
 	}
@@ -541,8 +541,8 @@ func TestScanADFMultiplePages(t *testing.T) {
 		t.Fatalf("ADF pages = %d, want 3", len(files))
 	}
 	for _, f := range files {
-		if filepath.Ext(f) != ".jpg" {
-			t.Errorf("unexpected extension: %s", f)
+		if filepath.Ext(f.Path) != ".jpg" {
+			t.Errorf("unexpected extension: %s", f.Path)
 		}
 	}
 	if !strings.Contains(fs.lastCreate, "<scan:ColorMode>Grayscale8</scan:ColorMode>") {

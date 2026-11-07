@@ -28,11 +28,11 @@ func TestScanBWRequestsGrayscale(t *testing.T) {
 	if strings.Contains(fs.lastCreate, "BlackAndWhite1") {
 		t.Errorf("不该把 BlackAndWhite1 下发出去：%s", fs.lastCreate)
 	}
-	if len(files) != 1 || !strings.HasSuffix(files[0], ".png") {
+	if len(files) != 1 || !strings.HasSuffix(files[0].Path, ".png") {
 		t.Fatalf("黑白页应存成 PNG：%v", files)
 	}
 	// 落盘的必须已经是纯黑白：只有 0 和 255 两个灰度值。
-	img, err := png.Decode(bytes.NewReader(readFile(t, files[0])))
+	img, err := png.Decode(bytes.NewReader(readFile(t, files[0].Path)))
 	if err != nil {
 		t.Fatalf("落盘的不是 PNG：%v", err)
 	}
@@ -62,7 +62,7 @@ func TestScanColorUnchanged(t *testing.T) {
 		if !strings.Contains(fs.lastCreate, pickColorMode(d.caps.Platen, key)) {
 			t.Errorf("%s 下发的 ColorMode 不对：%s", key, fs.lastCreate)
 		}
-		if len(files) != 1 || !strings.HasSuffix(files[0], ".jpg") {
+		if len(files) != 1 || !strings.HasSuffix(files[0].Path, ".jpg") {
 			t.Errorf("%s 不该改存 PNG：%v", key, files)
 		}
 	}

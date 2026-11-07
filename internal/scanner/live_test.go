@@ -123,12 +123,12 @@ func TestLiveScan(t *testing.T) {
 	if len(files) != 1 {
 		t.Fatalf("platen scan returned %d pages", len(files))
 	}
-	img, err := Decode(files[0])
+	img, err := Decode(files[0].Path)
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	b := img.Bounds()
-	t.Logf("scanned %dx%d in %v (file %s)", b.Dx(), b.Dy(), time.Since(start), files[0])
+	t.Logf("scanned %dx%d in %v (file %s)", b.Dx(), b.Dy(), time.Since(start), files[0].Path)
 	if b.Dx() < 2000 || b.Dy() < 2000 {
 		t.Fatalf("unexpected page size %dx%d", b.Dx(), b.Dy())
 	}

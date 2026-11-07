@@ -7,18 +7,10 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
-	"math"
 	"os"
 
 	"golang.org/x/image/bmp"
 	"golang.org/x/image/draw"
-)
-
-const (
-	// 增白要重编码一次，质量比导出高一档，抵掉代际损失。
-	whitenJPEGQuality = 92
-	// 增益上限：纸底再暗也不硬拉到白，否则噪点会变成色块。
-	maxPaperGain = 2.0
 )
 
 // BMP 分支留给 OCR 测试和旧样张。
@@ -168,144 +160,6 @@ func bilevelPNG(jpg []byte) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
-}
-
-// whitenPage 把灰底纸张归一化成白底：按亮度直方图找纸张主峰，
-// 逐通道把纸白拉到 255。已经是白底、或看不出成片纸底（多半是照片）时原样返回。
-//
-// 增白只是观感修正，失败时保留原图比让整页扫不出来更重要，所以这里不返回错误。
-func whitenPage(data []byte) []byte {
-	img, format, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return data
-	}
-	src := toRGBA(img)
-	gains, ok := paperGains(src)
-	if !ok {
-		return data
-	}
-	applyGains(src, gains)
-	var out []byte
-	switch format {
-	case "png":
-		out, err = encodePNG(src)
-	default:
-		out, err = encodeJPEG(src, whitenJPEGQuality)
-	}
-	if err != nil {
-		return data
-	}
-	return out
-}
-
-// paperGains 估计纸底每通道的白点增益。第二项为 false 表示不该增白。
-func paperGains(src *image.RGBA) ([3]float32, bool) {
-	var none [3]float32
-	b := src.Bounds()
-	w, h := b.Dx(), b.Dy()
-	if w <= 0 || h <= 0 {
-		return none, false
-	}
-	// 最多约 20 万个样本：分布够用，不必全图。
-	step := max(1, int(math.Sqrt(float64(w)*float64(h)/200000)))
-
-	var lum [256]uint32
-	total := 0
-	lumAt := func(i int) uint32 {
-		return (299*uint32(src.Pix[i]) + 587*uint32(src.Pix[i+1]) + 114*uint32(src.Pix[i+2])) / 1000
-	}
-	for y := b.Min.Y; y < b.Max.Y; y += step {
-		i := src.PixOffset(b.Min.X, y)
-		for x := b.Min.X; x < b.Max.X; x += step {
-			lum[lumAt(i)]++
-			total++
-			i += step * 4
-		}
-	}
-	if total == 0 {
-		return none, false
-	}
-	share := func(n uint32) float64 { return float64(n) / float64(total) }
-
-	var whiteMass uint32
-	for v := 251; v <= 255; v++ {
-		whiteMass += lum[v]
-	}
-	if share(whiteMass) > 0.25 {
-		return none, false // 纸底已经白了
-	}
-
-	// 纸底是亮部里最高的一峰；没有成片的亮部就当照片放过。
-	peak := 120
-	for v := 121; v <= 250; v++ {
-		if lum[v] > lum[peak] {
-			peak = v
-		}
-	}
-	var peakMass uint32
-	for v := max(0, peak-12); v <= min(255, peak+12); v++ {
-		peakMass += lum[v]
-	}
-	if peak < 150 || share(peakMass) < 0.25 {
-		return none, false
-	}
-
-	// 主峰附近就是纸底，取通道均值当白点。
-	var sum [3]uint64
-	var n uint64
-	for y := b.Min.Y; y < b.Max.Y; y += step {
-		i := src.PixOffset(b.Min.X, y)
-		for x := b.Min.X; x < b.Max.X; x += step {
-			if l := int(lumAt(i)); l >= peak-8 && l <= peak+8 {
-				sum[0] += uint64(src.Pix[i])
-				sum[1] += uint64(src.Pix[i+1])
-				sum[2] += uint64(src.Pix[i+2])
-				n++
-			}
-			i += step * 4
-		}
-	}
-	if n == 0 {
-		return none, false
-	}
-
-	var gain [3]float32
-	changed := false
-	for c := range 3 {
-		white := float64(sum[c]) / float64(n)
-		if white <= 0 {
-			return none, false
-		}
-		g := float32(min(255/white, maxPaperGain))
-		gain[c] = max(g, 1)
-		if gain[c] > 1.05 {
-			changed = true
-		}
-	}
-	if !changed {
-		return none, false
-	}
-	return gain, true
-}
-
-func applyGains(src *image.RGBA, gain [3]float32) {
-	var lut [3][256]uint8
-	for c := range 3 {
-		for v := range 256 {
-			n := int(float32(v)*gain[c] + 0.5)
-			lut[c][v] = uint8(min(n, 255))
-		}
-	}
-	b := src.Bounds()
-	for y := b.Min.Y; y < b.Max.Y; y++ {
-		i := src.PixOffset(b.Min.X, y)
-		for x := b.Min.X; x < b.Max.X; x++ {
-			src.Pix[i] = lut[0][src.Pix[i]]
-			src.Pix[i+1] = lut[1][src.Pix[i+1]]
-			src.Pix[i+2] = lut[2][src.Pix[i+2]]
-			i += 4
-		}
-	}
 }
 
 // Rec.601 亮度：扫描件多是灰底黑字，人眼权重最接近「看起来黑不黑」。
