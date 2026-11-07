@@ -22,6 +22,7 @@ func (a *app) openExport(single int) {
 	a.exportPhase = PhaseIdle
 	a.exportFmt = ExportPDF
 	a.exportOriginal = false
+	a.exportLevel = a.enhanceLevel
 	a.exportFilename = a.defaultFilename()
 	a.ocrPicked = false
 	a.dlg = DlgExport
@@ -114,7 +115,12 @@ func (a *app) exportFormView(c *ui.Context) {
 		if a.exportOriginal {
 			caption(c, "扫描仪直接输出的图片，灰底和噪点都保留。")
 		} else {
-			caption(c, "已去灰底、加深文字。")
+			sectionLabel(c, "优化强度", false)
+			lv := enhanceLevelIndex(a.exportLevel)
+			if segmented(c, &lv, enhanceLevelLabels, nil) {
+				a.exportLevel = enhanceLevels[lv]
+			}
+			caption(c, "导出时按这个力度从原图重新处理。")
 		}
 	}
 
@@ -232,7 +238,7 @@ func (a *app) runExport() {
 		format:   a.exportFmt,
 		original: a.exportOriginal,
 		startDir: a.lastExportDir,
-		pages:    a.pageExports(a.exportOriginal),
+		pages:    a.pageExports(a.exportOriginal, a.exportLevel),
 	}
 
 	go func() {
@@ -253,15 +259,32 @@ type exportJob struct {
 	pages    []scanner.ExportPage
 }
 
-func (a *app) pageExports(original bool) []scanner.ExportPage {
+func (a *app) pageExports(original bool, level scanner.EnhanceLevel) []scanner.ExportPage {
 	targets := a.exportTargets()
 	pages := make([]scanner.ExportPage, len(targets))
 	for i, p := range targets {
-		path := p.FullPath
-		if original && p.RawPath != "" {
-			path = p.RawPath
+		ep := scanner.ExportPage{Rot: p.Rot}
+		raw, rawOK := p.RawPath, false
+		if raw != "" {
+			// 临时目录可能被清理或手工删过：读不到就退回已经优化好的页。
+			if _, err := os.Stat(raw); err == nil {
+				rawOK = true
+			}
 		}
-		pages[i] = scanner.ExportPage{Path: path, Rot: p.Rot}
+		switch {
+		case original && rawOK:
+			ep.Path = raw
+		case original:
+			ep.Path = p.FullPath
+		case rawOK:
+			// 有原图就从原图按导出力度重做：用户改了强度不必重扫。
+			ep.Path = raw
+			ep.Enhance = true
+			ep.EnhanceLevel = level
+		default:
+			ep.Path = p.FullPath
+		}
+		pages[i] = ep
 	}
 	return pages
 }

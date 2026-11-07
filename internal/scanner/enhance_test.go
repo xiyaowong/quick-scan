@@ -59,7 +59,7 @@ func meanAt(src *image.RGBA, x0, y0, size int) float64 {
 }
 
 func TestEnhancePageTurnsGrayPaperWhite(t *testing.T) {
-	out, ok := enhancePage(grayPaperJPEG(t))
+	out, ok := enhancePage(grayPaperJPEG(t), EnhanceStandard)
 	if !ok {
 		t.Fatal("灰底文档没有做增强")
 	}
@@ -84,7 +84,7 @@ func TestEnhancePageFlattensUnevenPaper(t *testing.T) {
 			img.Set(x, y, color.RGBA{R: v, G: v - 5, B: v - 20, A: 255})
 		}
 	}
-	out, ok := enhancePage(encodeTestJPEG(t, img))
+	out, ok := enhancePage(encodeTestJPEG(t, img), EnhanceStandard)
 	if !ok {
 		t.Fatal("有纸底的页面没有做增强")
 	}
@@ -92,6 +92,52 @@ func TestEnhancePageFlattensUnevenPaper(t *testing.T) {
 	for _, x := range []int{10, 280} {
 		if v := meanAt(got, x, 10, 20); v < 245 {
 			t.Errorf("x=%d 的纸底没铺白：%.1f", x, v)
+		}
+	}
+}
+
+// 力度只动黑白点：轻档保留浅灰，强档把接近纸白的浅灰一起压白。
+func TestEnhanceLevelsAdjustPaperWhite(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 240, 320))
+	for y := range 320 {
+		for x := range 240 {
+			img.Set(x, y, color.RGBA{R: 200, G: 200, B: 200, A: 255})
+		}
+	}
+	for y := 200; y < 260; y++ {
+		for x := 20; x < 100; x++ {
+			img.Set(x, y, color.RGBA{R: 180, G: 180, B: 180, A: 255})
+		}
+	}
+	for y := 100; y < 140; y++ {
+		for x := 60; x < 180; x++ {
+			img.Set(x, y, color.RGBA{R: 40, G: 40, B: 40, A: 255})
+		}
+	}
+	src := encodeTestJPEG(t, img)
+
+	lightOut, ok := enhancePage(src, EnhanceLight)
+	if !ok {
+		t.Fatal("轻档没有做增强")
+	}
+	strongOut, ok := enhancePage(src, EnhanceStrong)
+	if !ok {
+		t.Fatal("强档没有做增强")
+	}
+	light, strong := decodeRGBA(t, lightOut), decodeRGBA(t, strongOut)
+
+	if got := meanAt(light, 30, 210, 20); got < 215 || got > 248 {
+		t.Errorf("轻档的浅灰被压掉了：%.1f", got)
+	}
+	if got := meanAt(strong, 30, 210, 20); got < 250 {
+		t.Errorf("强档的浅灰没有被压白：%.1f", got)
+	}
+	for _, c := range []struct {
+		name string
+		img  *image.RGBA
+	}{{"轻档", light}, {"强档", strong}} {
+		if got := meanAt(c.img, 10, 10, 20); got < 248 {
+			t.Errorf("%s的纸底没铺白：%.1f", c.name, got)
 		}
 	}
 }
@@ -106,7 +152,7 @@ func TestEnhancePageKeepsPhoto(t *testing.T) {
 		}
 	}
 	in := encodeTestJPEG(t, src)
-	if out, ok := enhancePage(in); ok || !bytes.Equal(out, in) {
+	if out, ok := enhancePage(in, EnhanceStandard); ok || !bytes.Equal(out, in) {
 		t.Fatal("照片被当成文档处理了")
 	}
 }
@@ -120,7 +166,7 @@ func TestEnhancePageKeepsWhitePaper(t *testing.T) {
 		}
 	}
 	in := encodeTestJPEG(t, src)
-	if out, ok := enhancePage(in); ok || !bytes.Equal(out, in) {
+	if out, ok := enhancePage(in, EnhanceStandard); ok || !bytes.Equal(out, in) {
 		t.Fatal("白底页被重编码了")
 	}
 }

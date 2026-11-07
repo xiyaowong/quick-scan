@@ -90,17 +90,17 @@ func TestScanPrefsRoundTrip(t *testing.T) {
 		t.Fatalf("没存过却读出了 %+v", got)
 	}
 	SaveExportDir(t.TempDir())
-	SaveScanPrefs(ScanPrefs{Color: 2, Size: 1, DPI: 600, Intent: "Photo", Feeder: true, NoEnhance: true})
+	SaveScanPrefs(ScanPrefs{Color: 2, Size: 1, DPI: 600, Intent: "Photo", Feeder: true, NoEnhance: true, EnhanceLevel: 2})
 
 	got := LoadScanPrefs()
-	if got == nil || *got != (ScanPrefs{Color: 2, Size: 1, DPI: 600, Intent: "Photo", Feeder: true, NoEnhance: true}) {
+	if got == nil || *got != (ScanPrefs{Color: 2, Size: 1, DPI: 600, Intent: "Photo", Feeder: true, NoEnhance: true, EnhanceLevel: 2}) {
 		t.Fatalf("LoadScanPrefs = %+v", got)
 	}
 	if LoadExportDir() == "" {
 		t.Fatal("存扫描设置抹掉了导出目录")
 	}
 	SaveExportDir(t.TempDir())
-	if got = LoadScanPrefs(); got == nil || *got != (ScanPrefs{Color: 2, Size: 1, DPI: 600, Intent: "Photo", Feeder: true, NoEnhance: true}) {
+	if got = LoadScanPrefs(); got == nil || *got != (ScanPrefs{Color: 2, Size: 1, DPI: 600, Intent: "Photo", Feeder: true, NoEnhance: true, EnhanceLevel: 2}) {
 		t.Fatalf("存导出目录抹掉了扫描设置: %+v", got)
 	}
 }

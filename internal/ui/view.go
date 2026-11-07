@@ -382,24 +382,65 @@ func (a *app) colorField(c *ui.Context) {
 	}
 }
 
-func (a *app) enhanceField(c *ui.Context) {
-	sectionLabel(c, "自动优化", false)
-	on := a.enhance
-	useless := a.color == ColorBW || scanner.IsPhotoIntent(a.intent)
-	hint := "去灰底、加深文字，原图会一并保留。"
+// 顺序就是界面上的顺序：轻 / 标准 / 强。
+var (
+	enhanceLevels      = []scanner.EnhanceLevel{scanner.EnhanceLight, scanner.EnhanceStandard, scanner.EnhanceStrong}
+	enhanceLevelLabels = []string{"轻", "标准", "强"}
+)
+
+func enhanceLevelIndex(l scanner.EnhanceLevel) int {
+	for i, v := range enhanceLevels {
+		if v == l {
+			return i
+		}
+	}
+	return 1 // 标准
+}
+
+// 关和力度合成一个控件：少一行，也不必先开再调。
+func enhanceModeIndex(on bool, l scanner.EnhanceLevel) int {
+	if !on {
+		return 0
+	}
+	return enhanceLevelIndex(l) + 1
+}
+
+func (a *app) enhanceHint() string {
 	switch {
 	case a.color == ColorBW:
-		hint = "黑白扫描本身就是纯黑白。"
+		return "黑白扫描本身就是纯黑白。"
 	case scanner.IsPhotoIntent(a.intent):
-		hint = "照片不做自动优化。"
+		return "照片不做自动优化。"
+	case !a.enhance:
+		return "保留扫描仪原样。"
 	}
-	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
-		ui.Text(c, hint).FontSize(11.5).TextColor(colMuted).LineHeight(1.45).Grow(1)
-		sw := ui.Switch(c, &on).Disabled(useless)
-		if sw.Changed() {
-			a.enhance = on
+	switch a.enhanceLevel {
+	case scanner.EnhanceLight:
+		return "保留纸纹和浅灰，接近原样；原图会保留。"
+	case scanner.EnhanceStrong:
+		return "纸底更白、文字更黑，浅色内容可能被抹掉；原图会保留。"
+	default:
+		return "去灰底、加深文字，适合大多数文档；原图会保留。"
+	}
+}
+
+func (a *app) enhanceField(c *ui.Context) {
+	sectionLabel(c, "自动优化", false)
+	useless := a.color == ColorBW || scanner.IsPhotoIntent(a.intent)
+	cur := enhanceModeIndex(a.enhance, a.enhanceLevel)
+	enabled := []bool{true, true, true, true}
+	if useless {
+		enabled = []bool{false, false, false, false}
+	}
+	if segmented(c, &cur, []string{"关", "轻", "标准", "强"}, enabled) {
+		if cur == 0 {
+			a.enhance = false
+		} else {
+			a.enhance = true
+			a.enhanceLevel = enhanceLevels[cur-1]
 		}
-	})
+	}
+	caption(c, a.enhanceHint())
 }
 
 func (a *app) sourceField(c *ui.Context) {

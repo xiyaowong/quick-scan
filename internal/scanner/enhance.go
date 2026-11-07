@@ -16,17 +16,36 @@ const (
 	paperTileSize = 64
 	// 每块取 85% 分位当纸底。纸面占多数，分位数不会被少量噪点或浅色内容拉高。
 	paperQuantile = 85
-	// 归一化后的白点：纸底本身有噪声，压到 236 以上才看成纯白。
-	paperWhitePoint = 236
-	// 黑点上限：纸白的 20%。页面没有成片墨色时不会把浅灰内容压黑。
-	blackPointCap = 48
 )
+
+// EnhanceLevel 是文档增强的力度。零值 = 标准，旧记录不需要迁移。
+type EnhanceLevel int
+
+const (
+	EnhanceStandard EnhanceLevel = iota // 大部分文档
+	EnhanceLight                        // 保留纸纹和浅灰
+	EnhanceStrong                       // 纸底更白、文字更黑
+)
+
+// 力度只动黑白点：纸底归一化本身是还原扫描时的光照，不该随力度变。
+// 白点越低，越多接近纸白的像素被压成纯白；黑点越高，文字压得越黑。
+func enhanceParams(level EnhanceLevel) (white, blackCap int) {
+	switch level {
+	case EnhanceLight:
+		return 248, 32
+	case EnhanceStrong:
+		return 216, 72
+	default:
+		return 236, 48
+	}
+}
 
 // paperMap 是纸底光照图：每格每通道一个纸白值，像素按双线性插值取。
 type paperMap struct {
 	gw, gh int
 	tile   int
 	ch     [3][]uint8
+	white  int
 	black  uint8
 }
 
@@ -37,17 +56,15 @@ type paperMap struct {
 // 也不会因为纸底只亮了一点就整页重编码。
 //
 // 增强只是观感修正，失败时保留原图比让整页扫不出来更重要，所以这里不返回错误。
-func enhancePage(data []byte) ([]byte, bool) {
+func enhancePage(data []byte, level EnhanceLevel) ([]byte, bool) {
 	img, format, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return data, false
 	}
 	src := toRGBA(img)
-	pm, ok := estimatePaper(src)
-	if !ok {
+	if !enhanceImage(src, level) {
 		return data, false
 	}
-	applyPaperNormalization(src, pm)
 	var out []byte
 	if format == "png" {
 		out, err = encodePNG(src)
@@ -60,8 +77,18 @@ func enhancePage(data []byte) ([]byte, bool) {
 	return out, true
 }
 
+// enhanceImage 直接改像素：导出时从原图重做增强，省掉一次 JPEG 往返。
+func enhanceImage(src *image.RGBA, level EnhanceLevel) bool {
+	pm, ok := estimatePaper(src, level)
+	if !ok {
+		return false
+	}
+	applyPaperNormalization(src, pm)
+	return true
+}
+
 // estimatePaper 判断这是不是一页纸，并估出纸底光照图。第二项为 false 表示不该增强。
-func estimatePaper(src *image.RGBA) (*paperMap, bool) {
+func estimatePaper(src *image.RGBA, level EnhanceLevel) (*paperMap, bool) {
 	b := src.Bounds()
 	w, h := b.Dx(), b.Dy()
 	if w < 16 || h < 16 {
@@ -121,10 +148,12 @@ func estimatePaper(src *image.RGBA) (*paperMap, bool) {
 		return nil, false
 	}
 
-	// 墨色换算到归一化后的亮度，再封顶：纸面越亮，墨越黑。
+	// 墨色换算到归一化后的亮度，再按力度封顶：纸面越亮，墨越黑。
+	white, blackCap := enhanceParams(level)
 	paperLum := medianTileLuma(pm)
 	black := int(float64(ink)*255/float64(max(paperLum, 1)) + 0.5)
-	black = min(black, blackPointCap, paperWhitePoint-16)
+	black = min(black, blackCap, white-16)
+	pm.white = white
 	pm.black = uint8(max(black, 0))
 	return pm, true
 }
@@ -232,7 +261,7 @@ func medianTileLuma(pm *paperMap) int {
 // 增益查表：背景值和像素值的组合只有 256×256 种，每像素只剩查表。
 func applyPaperNormalization(src *image.RGBA, pm *paperMap) {
 	var level [256]uint8
-	black, white := int(pm.black), paperWhitePoint
+	black, white := int(pm.black), pm.white
 	span := white - black
 	for v := range 256 {
 		level[v] = uint8(clampInt((v-black)*255/span, 0, 255))

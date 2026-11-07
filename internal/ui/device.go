@@ -592,17 +592,23 @@ func (a *app) restoreScanPrefs(s *platform.ScanPrefs) {
 	}
 	a.feeder = s.Feeder
 	a.enhance = !s.NoEnhance
+	a.enhanceLevel = scanner.EnhanceStandard
+	switch scanner.EnhanceLevel(s.EnhanceLevel) {
+	case scanner.EnhanceLight, scanner.EnhanceStrong:
+		a.enhanceLevel = scanner.EnhanceLevel(s.EnhanceLevel)
+	}
 }
 
 // 在 startScan 里调：真正用过的设置才值得跨会话记住。
 func (a *app) saveScanPrefs() {
 	platform.SaveScanPrefs(platform.ScanPrefs{
-		Color:     int(a.color),
-		Size:      int(a.size),
-		DPI:       a.dpi,
-		Intent:    a.intent,
-		Feeder:    a.feeder,
-		NoEnhance: !a.enhance,
+		Color:        int(a.color),
+		Size:         int(a.size),
+		DPI:          a.dpi,
+		Intent:       a.intent,
+		Feeder:       a.feeder,
+		NoEnhance:    !a.enhance,
+		EnhanceLevel: int(a.enhanceLevel),
 	})
 }
 
@@ -628,12 +634,13 @@ func (a *app) startScan() {
 	}
 	dev := a.devices[a.devSel]
 	opts := scanner.Options{
-		Color:   a.color.key(),
-		DPI:     a.dpi,
-		Size:    a.size.key(),
-		Feeder:  a.feeder,
-		Intent:  a.intent,
-		Enhance: a.enhance,
+		Color:        a.color.key(),
+		DPI:          a.dpi,
+		Size:         a.size.key(),
+		Feeder:       a.feeder,
+		Intent:       a.intent,
+		Enhance:      a.enhance,
+		EnhanceLevel: a.enhanceLevel,
 	}
 	_ = platform.EnsurePagesDir()
 	dir := platform.SessionDir()
