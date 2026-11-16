@@ -1,0 +1,17 @@
+{
+  "name": "quick-scan",
+  "slug": "quick-scan",
+  "identifier": "com.xiyaowong.quickscan",
+  "version": "1.2.0",
+  "publisher": "xiyaowong",
+  "copyright": "xiyaowong · MIT",
+  "icon": "resources/icon.png",
+  "main": "./cmd/quick-scan",
+  "windows": {
+    "displayName": "快速扫描"
+  },
+  "updates": {
+    "publicKey": "jbumiMxQHCyvJUx/kv1PEa0yS1v8Xn0v0pvm/nAwX7Q=",
+    "github": "xiyaowong/quick-scan"
+  }
+}

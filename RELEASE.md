@@ -2,7 +2,29 @@
 
 发版只需要三步：改版本号 → 打 tag 推上去 → 等 GitHub Actions 发布。
 
-自动更新读取的是 GitHub Releases，所以**这套流程必须走完**，手改文件或手动传包都不算发版。
+版本号只有一个来源：`mygo.json`。构建、安装包、更新清单和自动更新都读它，
+安装脚本和资源文件里的第二份版本号已经删掉。
+
+## 0. 首次准备（只需做一次）
+
+自动更新只接受用同一把密钥签名的包。密钥对用 mygo 官方命令生成：
+
+```powershell
+go tool mygo keygen
+```
+
+它把 `mygo-update.key`（私钥）和 `mygo-update.pub`（公钥）写到
+`%APPDATA%\mygo\update-keys\`，并打印位置。然后：
+
+- 把 `mygo-update.pub` 的内容填进 `mygo.json` 的 `updates.publicKey`（已填好）；
+- 把私钥存进 GitHub 仓库机密，CI 发版时用它签名：
+
+  ```powershell
+  gh secret set MYGO_UPDATER_PRIVATE_KEY < "$env:APPDATA\mygo\update-keys\mygo-update.key"
+  ```
+
+私钥不要进仓库。丢了它，已安装的用户就再也收不到更新；泄露了它，
+别人就能给你的用户推任意代码。
 
 ## 1. 定版本号
 
@@ -21,61 +43,78 @@ git tag -l --sort=-v:refname | Select-Object -First 3
 git log --oneline "$(git describe --tags --abbrev=0)..HEAD"
 ```
 
-按上面的改动决定版本号，例如 `0.2.0`。
-
 ## 2. 改版本号
 
-只改 `app.rc`，四处都要改：
+只改 `mygo.json` 的 `version`：
 
-```
-FILEVERSION     0,2,0,0
-PRODUCTVERSION  0,2,0,0
-VALUE "FileVersion",     "0.2.0"
-VALUE "ProductVersion",  "0.2.0"
+```json
+"version": "1.3.0"
 ```
 
-`FILEVERSION` / `PRODUCTVERSION` 是四段数字（最后一段固定 0），
-字符串是三段。`justfile`、安装包和自动更新都从这里读，别的地方不用动。
+更新窗口显示的新版本说明来自 `CHANGELOG.md`：在里面加一节 `## 1.3.0`
+（也认 `## [1.3.0] - 2026-11-16` 这种写法）。缺了这一节，签名构建会直接失败。
 
 改完在本地确认一次：
 
 ```powershell
-just test        # 单测
-just installer   # dist\quick-scan-0.2.0-setup.exe
+just test     # 单测
+just build    # dist\windows-amd64\quick-scan.exe + 安装包
 ```
+
+本地不带签名密钥时只警告、不出更新包；真正发版由 CI 签名。
 
 ## 3. 发版
 
 ```powershell
-git add app.rc
-git commit -m "发布 0.2.0"
-git tag v0.2.0
+git add mygo.json CHANGELOG.md
+git commit -m "发布 1.3.0"
+git tag v1.3.0
 git push origin main --tags
 ```
 
 推送 tag 会触发 `.github/workflows/release.yml`：
 
-1. 校验 tag 与 `app.rc` 的版本号一致，不一致直接失败，不会发错版本；
-2. 在 Windows runner 上编译（Rust OCR 桥 + Go），跑一遍单测；
-3. 打包安装包和免安装 zip；
-4. 建 release（自动生成更新说明）并上传两个产物。
+1. 校验 tag 与 `mygo.json` 的版本一致，不一致直接失败；
+2. 在 Windows runner 上编 Rust OCR 桥、跑单测；
+3. `go tool mygo build` 编译、打包，用私钥签名更新；
+4. 把安装包、更新归档、增量更新和清单上传到 `v1.3.0` 草稿 release；
+5. 取消草稿状态，正式发布。
 
-在 Actions 页面等绿灯，然后打开 Releases 确认：
+在 Actions 页面等绿灯，然后打开 Releases 确认这些产物：
 
-- `quick-scan-0.2.0-setup.exe`（自动更新下载的就是它）
-- `quick-scan-0.2.0-win64.zip`
+- `quick-scan-setup-1.3.0-amd64.exe`（安装包）
+- `quick-scan-1.3.0-windows-amd64.tar.gz`（更新归档，免安装版也可解压使用）
+- `update-windows-amd64.json`（更新清单，程序读它判断有没有新版本）
+- `install.ps1`（装最新版用）
+- `SHA256SUMS`
 
-## 自动更新怎么用这些产物
+文件名和清单都由 mygo 生成，不要手改；改了等于关掉自动更新。
+需要本地重跑发版可用 `just release`，但得先设好
+`MYGO_UPDATER_PRIVATE_KEY` 和 `GH_TOKEN`。
 
-- 已安装的用户启动时查 `releases/latest`，发现新版本就后台下载安装包；
-- 下次启动时静默装好，界面上没有任何提示或等待；
-- 只认文件名 `quick-scan-<版本>-setup.exe`，改名字等于关掉自动更新；
-- 免安装版（zip 解压直接跑的）不自动更新，程序会跳过。
+## 自动更新怎么工作
+
+- 已安装的程序启动约 10 秒后在后台检查，之后每天一次；
+- 有新版本时弹出更新窗口，显示更新说明，可以安装、稍后提醒或跳过这个版本；
+- 安装后重启程序生效；
+- 界面右下角的版本号可以点开软件信息，里面有「检查更新」，检查失败也会说明原因；
+- 更新包必须通过 `mygo.json` 里公钥的签名校验，校验不过不会安装；
+- 解压到可写目录的免安装版也会自我更新；放在只读目录（如 `Program Files`）里则不更新。
+
+## 从旧方案切换
+
+1.2.0 及更早的版本用的是自研更新（认 `quick-scan-<版本>-setup.exe`），
+新方案的文件名和清单都不一样。这些老用户不会自动升级，需要手动下载一次
+`quick-scan-setup-<版本>-amd64.exe` 装上；之后就会走新的自动更新。
 
 ## 出错时
 
-- **workflow 报版本号不一致**：tag 和 `app.rc` 对不上。删掉 tag 重来：
-  `git tag -d v0.2.0; git push origin :refs/tags/v0.2.0`。
-- **release 已经发了但要重传**：Actions 里重跑 workflow，会覆盖同名产物。
-- **发错了版本**：删掉 release 和 tag，把 `app.rc` 改回正确版本重新发。
+- **workflow 报版本号不一致**：tag 和 `mygo.json` 对不上。删掉 tag 重来：
+  `git tag -d v1.3.0; git push origin :refs/tags/v1.3.0`。
+- **release 已经发了但要重传**：Actions 里手动触发 workflow，输入同一个 tag，
+  会覆盖同名产物并重新发布。
+- **签名失败或用户收不到更新**：确认 `MYGO_UPDATER_PRIVATE_KEY` 与
+  `mygo.json` 的 `publicKey` 是同一对密钥。重新生成密钥等于换锁，
+  已安装的老用户不会接受新包。
+- **发错了版本**：删掉 release 和 tag，把 `mygo.json` 改回正确版本重新发。
   已经更新过的用户不会自己降级，只能等下一个版本。
