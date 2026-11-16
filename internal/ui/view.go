@@ -17,6 +17,7 @@ import (
 
 func (a *app) view(c *ui.Context) {
 	c.SetTheme(lightTheme())
+	a.windowHidden.Store(c.WindowHidden())
 	ui.Column(c).Fill().Children(func() {
 		a.titleBar(c)
 		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
@@ -501,7 +502,7 @@ func (a *app) scanButton(c *ui.Context) {
 func (a *app) stopScanButton(c *ui.Context) {
 	// Key 必须和扫描按钮不同：两者是同一位置的同类元素，
 	// 不换 Key 就会继承上一帧的点击态，双击/按住回车会立刻把刚启动的扫描停掉。
-	b := ui.ButtonBase(c).Key("stop-scan").FillWidth().Height(44).Radius(8).
+	b := ui.ButtonBase(c.Key("stop-scan")).FillWidth().Height(44).Radius(8).
 		Disabled(a.stopping).
 		Transition(ui.ElementTransition{Duration: 140 * time.Millisecond, Colors: true})
 	fg := paintButton(b, toneDanger, a.stopping)

@@ -51,6 +51,8 @@ func lightTheme() *ui.Theme {
 	t.Accent = colAccent
 	t.AccentHover = colAccentHover
 	t.AccentPressed = colAccentPress
+	// mygo 0.8 起窗口失焦会把主题强调色褪成灰；本程序一直是绿色，保持原样。
+	t.InactiveAccent = colAccent
 	t.AccentText = ui.Hex("#FFFFFF")
 	t.Danger = colDanger
 	t.Success = colOk

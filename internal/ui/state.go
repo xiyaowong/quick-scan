@@ -5,6 +5,7 @@ import (
 	"image"
 	"path/filepath"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"quick-scan/internal/platform"
@@ -228,6 +229,8 @@ type app struct {
 	// lastReprobe 上一次为「脱机后又应答」发起的探测。
 	lastReprobe time.Time
 	statusKick  chan struct{} // nil = 没起轮询
+	// windowHidden 由视图每帧写入；主线程和轮询协程之间只通过它共享这一个状态。
+	windowHidden atomic.Bool
 	autoQueue   []int         // 非空 = 正在按名单顺序找第一台在线的；存 Idx，列表重排后仍稳定
 	// userPicked 用户手动选过设备：接力让位，不再自动改选中项。重新检测时清零。
 	userPicked   bool
