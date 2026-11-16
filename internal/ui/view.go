@@ -9,7 +9,6 @@ import (
 
 	"quick-scan/internal/platform"
 	"quick-scan/internal/scanner"
-	"quick-scan/internal/update"
 
 	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/transfer"
@@ -717,8 +716,8 @@ func (a *app) statusBar(c *ui.Context) {
 				t.Tooltip(a.hintDetail)
 			}
 		}
-		if update.Version != "" {
-			ui.Text(c, update.Version).FontSize(11).TextColor(colFaint)
+		if versionButton(c).Clicked() {
+			a.dlg = DlgAbout
 		}
 	})
 }
@@ -750,6 +749,8 @@ func (a *app) overlays(c *ui.Context) {
 				platform.ClearSession()
 				a.dlg = DlgNone
 			})
+	case DlgAbout:
+		a.aboutDialog(c)
 	}
 }
 

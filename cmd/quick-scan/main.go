@@ -8,16 +8,16 @@ import (
 	"quick-scan/internal/platform"
 	"quick-scan/internal/scanner"
 	appui "quick-scan/internal/ui"
-	"quick-scan/internal/update"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/updater/native"
 	myui "github.com/egoist/mygo/ui"
 )
 
 func main() {
 	platform.DetachIfStandalone()
 	// 模型按版本解包：升级换模型后不能复用上一版留在临时目录里的文件。
-	platform.SetVersion(update.Version)
+	platform.SetVersion(mygo.App.Version())
 
 	// --ocr-test <图片> [--ocr-raw|--ocr-rank]：不开窗口，跑一遍 OCR 文件名候选。
 	if len(os.Args) >= 3 && os.Args[1] == "--ocr-test" {
@@ -52,6 +52,8 @@ func run() (err error) {
 	}
 
 	platform.CleanupStale()
+
+	mygo.Use(native.Plugin)
 
 	app := appui.New()
 	mygo.App.WhenReady(func() {

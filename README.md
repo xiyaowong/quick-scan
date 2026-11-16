@@ -13,7 +13,7 @@ Windows 上的局域网扫描工具。放纸、点扫描、导出 PDF 或 JPG，
 - 扫描件自动优化：铺平灰底、加深文字，强度可选轻 / 标准 / 强；原始扫描会一并保留，导出时可切回原图
 - 导出为一个 PDF 或每页一张 JPG，文件名可用 OCR 识别出的标题
 - 程序意外退出后，下次启动可以恢复未导出的页面
-- 新版本会在后台下载，下次打开时自动换好，不用自己下载安装
+- 启动后后台检查新版本，右下角版本号里可以手动检查更新
 
 ![看大图](docs/screenshot-lightbox.png)
 
@@ -30,14 +30,16 @@ Windows 上的局域网扫描工具。放纸、点扫描、导出 PDF 或 JPG，
 
 ## 构建
 
-需要 Go 1.27+、Rust、LLVM `clang`、`windres`；打安装包另需 NSIS。
+需要 Go 1.27+、Rust、LLVM `clang`。安装包和更新包交给官方 `mygo build`
+（Windows 上会自动下载 NSIS）。版本号只写在 `mygo.json`。
 
 ```powershell
-just build      # 产物：quick-scan.exe
+just build      # 产物：dist\windows-amd64\quick-scan.exe 和安装包
 just test       # 单测，不需要真机
-just run        # 构建并启动
-just installer  # 产物：dist\quick-scan-<版本>-setup.exe
+just run        # 开发时构建并启动
 ```
+
+发版流程见 [RELEASE.md](RELEASE.md)。
 
 ## 版权
 

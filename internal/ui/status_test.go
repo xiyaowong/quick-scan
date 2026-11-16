@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"quick-scan/internal/scanner"
-	"quick-scan/internal/update"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -146,9 +146,9 @@ func TestStatusBarShowsPrinterState(t *testing.T) {
 }
 
 func TestStatusBarShowsVersion(t *testing.T) {
-	old := update.Version
-	update.Version = "0.1.0"
-	t.Cleanup(func() { update.Version = old })
+	old := mygo.App.Version()
+	mygo.App.SetVersion("0.1.0")
+	t.Cleanup(func() { mygo.App.SetVersion(old) })
 
 	tt := ui.NewTester(onlineApp(false).view, 1200, 800)
 	if !tt.HasText("0.1.0") {

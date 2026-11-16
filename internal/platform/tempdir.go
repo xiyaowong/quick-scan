@@ -75,10 +75,9 @@ func migrateLegacySession() {
 // 旧版本把缓存直接放在根目录；现在统一收进 cache\。
 func migrateLegacyCache() {
 	cache := CacheDir()
-	for _, name := range []string{"devices.json", "prefs.json", "update.json"} {
+	for _, name := range []string{"devices.json", "prefs.json"} {
 		moveLegacy(filepath.Join(tempRoot(), name), filepath.Join(cache, name))
 	}
-	moveLegacy(filepath.Join(tempRoot(), "update"), filepath.Join(cache, "update"))
 }
 
 func moveLegacy(from, to string) {

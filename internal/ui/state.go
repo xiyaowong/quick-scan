@@ -98,6 +98,7 @@ const (
 	DlgQuitConfirm
 	DlgClearConfirm
 	DlgRecover
+	DlgAbout
 )
 
 type ExportPhase int

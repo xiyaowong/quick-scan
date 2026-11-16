@@ -18,7 +18,7 @@ var recOnnx []byte
 var dictTxt []byte
 
 var (
-	// 由 main 从 update.Version 注入：本地直接 go build 时没有版本号。
+	// 由 main 从 mygo.App.Version() 注入：本地直接 go build 时没有版本号。
 	version = "dev"
 
 	extractOnce sync.Once
