@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>快速扫描 · 放纸，扫描，导出</title>
+<meta name="description" content="Windows 上的局域网扫描工具：打开就能找到扫描仪，扫完导出 PDF 或 JPG，不用装厂商驱动，免费开源。">
+<meta name="theme-color" content="#F5F5F5">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='8'%20fill='%2307C160'/%3E%3Cpath%20d='M9%2013v-2.5A1.5%201.5%200%200%201%2010.5%209H13M19%209h2.5A1.5%201.5%200%200%201%2023%2010.5V13M23%2019v2.5a1.5%201.5%200%200%201-1.5%201.5H19M13%2023h-2.5A1.5%201.5%200%200%201%209%2021.5V19M12%2016h8'%20fill='none'%20stroke='%23fff'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+<script src="script.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">跳到正文</a>
+
+<header class="site-header" data-header>
+  <div class="wrap header-inner">
+    <a class="brand" href="#main">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8"/>
+          <path d="M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8"/>
+          <path d="M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16"/>
+          <path d="M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/>
+          <path d="M7.5 12h9"/>
+        </svg>
+      </span>
+      快速扫描
+    </a>
+
+    <nav class="nav" id="site-nav" aria-label="主导航">
+      <a href="#features">功能</a>
+      <a href="#shots">界面</a>
+      <a href="#how">使用</a>
+      <a href="#faq">常见问题</a>
+    </nav>
+
+    <div class="header-actions">
+      <a class="btn btn-primary btn-sm" href="https://github.com/xiyaowong/quick-scan/releases/latest" target="_blank" rel="noopener">下载</a>
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="打开菜单" data-nav-toggle>
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">Windows 10 / 11 · 免驱动 · 免费开源</p>
+        <h1>
+          <span class="line">放纸，</span>
+          <span class="line">扫描，</span>
+          <span class="line">导出<span class="stop">。</span></span>
+        </h1>
+        <p class="lede">打印机和电脑在同一个网络里，打开软件就能找到扫描仪。扫完直接存成 PDF 或 JPG，不用装厂商驱动，也不用翻说明书。</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="https://github.com/xiyaowong/quick-scan/releases/latest" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 4v11"/><path d="m7.5 11 4.5 4.5L16.5 11"/><path d="M5 20h14"/>
+            </svg>
+            下载 Windows 版
+          </a>
+          <a class="btn btn-line" href="#features">看看能做什么</a>
+        </div>
+        <ul class="hero-facts">
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.5 12.5 4.5 4.5L19.5 7"/></svg>自动找到扫描仪</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.5 12.5 4.5 4.5L19.5 7"/></svg>扫完自动变干净</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.5 12.5 4.5 4.5L19.5 7"/></svg>意外退出可恢复</li>
+        </ul>
+      </div>
+
+      <div class="hero-visual" aria-hidden="true">
+        <div class="stage">
+          <div class="paper paper-back"></div>
+          <div class="paper paper-mid"></div>
+          <div class="paper paper-main">
+            <div class="paper-head">
+              <div class="paper-title">
+                <strong>项目周报</strong>
+                <span>2026 年 10 月 21 日</span>
+              </div>
+              <span class="paper-tag">已优化</span>
+            </div>
+            <div class="paper-lines">
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+            <div class="paper-foot"><i></i><i></i></div>
+            <div class="sweep"></div>
+          </div>
+          <div class="scan-frame"><i></i><i></i><i></i><i></i></div>
+          <span class="float-chip chip-connect"><b></b>已连接</span>
+          <span class="float-chip chip-file">PDF · 4 页</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <div class="wrap">
+      <div class="section-head" data-reveal>
+        <p class="eyebrow">功能</p>
+        <h2>扫描要用的，<br>这里都有。</h2>
+        <p>没有多余的设置，也不用先学怎么用，每一步都顺手。</p>
+      </div>
+
+      <div class="feature-grid" data-reveal-group>
+        <article class="feature" data-reveal>
+          <span class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M2.5 9a14.5 14.5 0 0 1 19 0"/>
+              <path d="M5.5 12.5a10 10 0 0 1 13 0"/>
+              <path d="M8.5 16a5.6 5.6 0 0 1 7 0"/>
+              <circle cx="12" cy="19.4" r="1"/>
+            </svg>
+          </span>
+          <h3>打开就能找到</h3>
+          <p>同一网络里的扫描仪会自动出现，用过的会被记住，下次打开直接选中。</p>
+        </article>
+
+        <article class="feature" data-reveal>
+          <span class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3 20.5 7.5 12 12 3.5 7.5 12 3z"/>
+              <path d="m3.5 12 8.5 4.5 8.5-4.5"/>
+              <path d="m3.5 16.5 8.5 4.5 8.5-4.5"/>
+            </svg>
+          </span>
+          <h3>单张，或者整叠</h3>
+          <p>一张一张放玻璃板，或者把整叠纸放进进纸口，让它自己往下扫。</p>
+        </article>
+
+        <article class="feature" data-reveal>
+          <span class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/>
+              <path d="M20.5 3.5V9H15"/>
+            </svg>
+          </span>
+          <h3>页面随手整理</h3>
+          <p>点一下看大图，旋转、删除、拖动排序都在手边，导出前想怎么排都行。</p>
+        </article>
+
+        <article class="feature" data-reveal>
+          <span class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3.5 13.7 9.3 19.5 11l-5.8 1.7L12 18.5l-1.7-5.8L4.5 11l5.8-1.7L12 3.5z"/>
+              <path d="M18.5 16v3.5"/><path d="M16.75 17.75h3.5"/>
+            </svg>
+          </span>
+          <h3>扫完自动变干净</h3>
+          <p>自动铺平灰底、加深文字，强度分轻、标准、强。原始扫描会留着，随时能切回去。</p>
+        </article>
+
+        <article class="feature" data-reveal>
+          <span class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>
+            </svg>
+          </span>
+          <h3>只要 PDF 或 JPG</h3>
+          <p>合并成一个 PDF，或每页存一张 JPG。文件名可以用识别出来的标题。</p>
+        </article>
+
+        <article class="feature" data-reveal>
+          <span class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/>
+              <path d="M3.5 4.5V10H9"/>
+              <path d="M12 8v4.5l3 1.8"/>
+            </svg>
+          </span>
+          <h3>意外退出也不丢</h3>
+          <p>程序没正常关掉，下次打开会让你选：恢复上次的页面，还是从空白开始。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="how" id="how">
+    <div class="wrap">
+      <div class="section-head" data-reveal>
+        <p class="eyebrow">使用</p>
+        <h2>三步，扫完。</h2>
+        <p>第一次打开也不用设置，纸放好就能开始。</p>
+      </div>
+
+      <ol class="steps" data-reveal-group>
+        <li class="step" data-reveal>
+          <span class="step-num">01</span>
+          <h3>打开软件</h3>
+          <p>同一网络里的扫描仪会自动出现。状态点变绿，就是连上了。</p>
+        </li>
+        <li class="step" data-reveal>
+          <span class="step-num">02</span>
+          <h3>放纸，点扫描</h3>
+          <p>玻璃板一次一张；进纸口放整叠，让它逐张扫。扫完还能接着加。</p>
+        </li>
+        <li class="step" data-reveal>
+          <span class="step-num">03</span>
+          <h3>选格式，导出</h3>
+          <p>合成一个 PDF，或每页一张 JPG。存到哪里由你决定。</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="shots" id="shots">
+    <div class="wrap">
+      <div class="shots-head">
+        <div class="section-head" data-reveal>
+          <p class="eyebrow">界面</p>
+          <h2>左边看页面，<br>右边调设置。</h2>
+          <p>界面上只有两栏：扫好的页面，和这次要用的参数。其他的都收起来。</p>
+        </div>
+        <div class="tabs" role="tablist" aria-label="界面截图">
+          <button class="tab" type="button" role="tab" id="tab-main" aria-controls="panel-main" aria-selected="true" tabindex="0" data-shot-tab="main">主界面</button>
+          <button class="tab" type="button" role="tab" id="tab-lightbox" aria-controls="panel-lightbox" aria-selected="false" tabindex="-1" data-shot-tab="lightbox">看大图</button>
+        </div>
+      </div>
+
+      <div class="shot-panels" data-reveal>
+        <figure class="shot-panel is-active" id="panel-main" role="tabpanel" aria-labelledby="tab-main" data-shot-panel="main">
+          <div class="shot-frame">
+            <img src="assets/screenshot.png" alt="快速扫描主界面：左边是已经扫好的四页缩略图，右边是纸张大小、清晰度等扫描设置。" loading="lazy" decoding="async">
+          </div>
+          <figcaption>扫好的页面排在左边，这次要用的设置全在右边。</figcaption>
+        </figure>
+        <figure class="shot-panel" id="panel-lightbox" role="tabpanel" aria-labelledby="tab-lightbox" data-shot-panel="lightbox" hidden>
+          <div class="shot-frame">
+            <img src="assets/screenshot-lightbox.png" alt="看大图界面：一页扫描件居中显示，顶部可以旋转、导出此页、删除此页，底部可以翻页。" loading="lazy" decoding="async">
+          </div>
+          <figcaption>点一下页面看大图，旋转、删除、翻页都在手边。</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="faq" id="faq">
+    <div class="wrap faq-grid">
+      <div class="section-head" data-reveal>
+        <p class="eyebrow">常见问题</p>
+        <h2>你可能想问。</h2>
+      </div>
+
+      <div class="faq-list" data-reveal>
+        <details class="faq-item" open>
+          <summary>需要安装驱动吗？</summary>
+          <p>不需要。软件直接通过网络和打印机通信，只要两者在同一个网络里。打印机需要支持网络扫描，近几年的网络打印机大多支持。</p>
+        </details>
+        <details class="faq-item">
+          <summary>扫出来的文件存在哪？</summary>
+          <p>由你决定。导出时会打开系统的另存为窗口，存桌面、存 U 盘都可以；上次用过的文件夹会被记住。</p>
+        </details>
+        <details class="faq-item">
+          <summary>支持 Mac 或手机吗？</summary>
+          <p>目前只支持 64 位的 Windows 10 和 11。</p>
+        </details>
+        <details class="faq-item">
+          <summary>要收费吗？</summary>
+          <p>不要。免费使用，源码公开，按 MIT 许可发布。</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <section class="download">
+    <div class="wrap">
+      <div class="download-card" data-reveal>
+        <div class="download-copy">
+          <p class="eyebrow">下载</p>
+          <h2>现在就把纸变成 PDF。</h2>
+          <p>Windows 10 / 11（64 位）· 免费开源 · 打印机需与电脑在同一网络，并支持网络扫描</p>
+        </div>
+        <div class="download-actions">
+          <div class="download-buttons">
+            <a class="btn btn-primary btn-lg" href="https://github.com/xiyaowong/quick-scan/releases/latest" target="_blank" rel="noopener">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 4v11"/><path d="m7.5 11 4.5 4.5L16.5 11"/><path d="M5 20h14"/>
+              </svg>
+              下载最新版
+            </a>
+            <a class="btn btn-line btn-lg" href="https://github.com/xiyaowong/quick-scan" target="_blank" rel="noopener">查看源码</a>
+          </div>
+          <p class="download-note">装好之后不用自己升级，新版本会在后台下载。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <span class="footer-brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8"/>
+          <path d="M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8"/>
+          <path d="M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16"/>
+          <path d="M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/>
+          <path d="M7.5 12h9"/>
+        </svg>
+      </span>
+      快速扫描
+    </span>
+    <p>Windows 局域网扫描 · © <span data-year>2026</span> xiyaowong · MIT</p>
+    <nav class="footer-links" aria-label="外部链接">
+      <a href="https://github.com/xiyaowong/quick-scan" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/xiyaowong/quick-scan/releases" target="_blank" rel="noopener">更新日志</a>
+      <a href="https://github.com/xiyaowong/quick-scan/issues" target="_blank" rel="noopener">问题反馈</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>
