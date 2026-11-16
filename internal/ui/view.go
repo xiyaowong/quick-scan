@@ -17,6 +17,7 @@ import (
 
 func (a *app) view(c *ui.Context) {
 	c.SetTheme(lightTheme())
+	a.windowHidden.Store(c.WindowHidden())
 	ui.Column(c).Fill().Children(func() {
 		a.titleBar(c)
 		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {

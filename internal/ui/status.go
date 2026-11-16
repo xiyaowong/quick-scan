@@ -53,9 +53,16 @@ func (a *app) statusLoop() {
 	tick := time.NewTicker(statusPollInterval)
 	defer tick.Stop()
 	for {
+		kicked := false
 		select {
 		case <-tick.C:
 		case <-a.statusKick:
+			kicked = true
+		}
+		// 窗口最小化或被遮住时省掉每秒一次的设备请求；刚扫完、换设备这类
+		// 显式刷新仍然照发。重新显示后一轮内就会再取。
+		if !kicked && a.windowHidden.Load() {
+			continue
 		}
 		a.pollStatusOnce()
 	}
